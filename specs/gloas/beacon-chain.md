@@ -58,7 +58,7 @@
   - [Beacon state accessors](#beacon-state-accessors)
     - [Modified `get_next_sync_committee_indices`](#modified-get_next_sync_committee_indices)
     - [Modified `get_attestation_participation_flag_indices`](#modified-get_attestation_participation_flag_indices)
-    - [Modified `get_ptc`](#modified-get_ptc)
+    - [New `get_ptc`](#new-get_ptc)
     - [New `get_indexed_payload_attestation`](#new-get_indexed_payload_attestation)
     - [New `get_builder_payment_quorum_threshold`](#new-get_builder_payment_quorum_threshold)
   - [Beacon state mutators](#beacon-state-mutators)
@@ -728,9 +728,9 @@ def get_attestation_participation_flag_indices(
     return participation_flag_indices
 ```
 
-#### Modified `get_ptc`
+#### New `get_ptc`
 
-*Note*: `get_ptc` now uses the cached `previous_ptc` for the last slot of the
+*Note*: `get_ptc` uses the cached `previous_ptc` for the last slot of the
 previous epoch, and computes all other PTCs on demand via `compute_ptc`. Only
 the previous epoch's last-slot PTC requires caching because
 `process_payload_attestation` enforces `data.slot + 1 == state.slot`, and the
