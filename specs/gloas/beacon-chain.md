@@ -387,7 +387,7 @@ class BeaconState(Container):
     # [New in Gloas:EIP7732]
     payload_expected_withdrawals: List[Withdrawal, MAX_WITHDRAWALS_PER_PAYLOAD]
     # [New in Gloas:EIP7732]
-    previous_ptc: Vector[ValidatorIndex, PTC_SIZE]
+    previous_epoch_last_ptc: Vector[ValidatorIndex, PTC_SIZE]
 ```
 
 ## Dataclasses
@@ -730,7 +730,7 @@ def get_attestation_participation_flag_indices(
 
 #### New `get_ptc`
 
-*Note*: `get_ptc` uses the cached `previous_ptc` for the last slot of the
+*Note*: `get_ptc` uses the cached `previous_epoch_last_ptc` for the last slot of the
 previous epoch, and computes all other PTCs on demand via `compute_ptc`. Only
 the previous epoch's last-slot PTC requires caching because
 `process_payload_attestation` enforces `data.slot + 1 == state.slot`, and the
@@ -747,7 +747,7 @@ def get_ptc(state: BeaconState, slot: Slot) -> Vector[ValidatorIndex, PTC_SIZE]:
     assert epoch + 1 >= state_epoch and epoch <= state_epoch + 1
     if epoch + 1 == state_epoch:
         assert slot % SLOTS_PER_EPOCH == SLOTS_PER_EPOCH - 1
-        return state.previous_ptc
+        return state.previous_epoch_last_ptc
     return compute_ptc(state, slot)
 ```
 
@@ -877,7 +877,7 @@ def process_ptc_update(state: BeaconState) -> None:
     Cache the PTC for the current slot (last slot of the ending epoch)
     before effective balance updates alter the weighted selection.
     """
-    state.previous_ptc = compute_ptc(state, Slot(state.slot))
+    state.previous_epoch_last_ptc = compute_ptc(state, Slot(state.slot))
 ```
 
 #### New `process_builder_pending_payments`

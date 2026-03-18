@@ -13,7 +13,7 @@ from eth_consensus_specs.test.helpers.epoch_processing import run_epoch_processi
 def test_process_ptc_update_caches_last_slot_ptc(spec, state):
     """
     Test that process_ptc_update caches the PTC for the current slot
-    (last slot of the epoch) into state.previous_ptc.
+    (last slot of the epoch) into state.previous_epoch_last_ptc.
     """
     # Advance to last slot of the epoch
     spec.process_slots(state, state.slot + spec.SLOTS_PER_EPOCH - 1)
@@ -23,7 +23,7 @@ def test_process_ptc_update_caches_last_slot_ptc(spec, state):
 
     yield from run_epoch_processing_with(spec, state, "process_ptc_update")
 
-    assert list(state.previous_ptc) == list(expected_ptc)
+    assert list(state.previous_epoch_last_ptc) == list(expected_ptc)
 
 
 @with_phases([GLOAS])
@@ -32,7 +32,7 @@ def test_process_ptc_update_caches_last_slot_ptc(spec, state):
 def test_get_ptc_returns_cached_previous_for_epoch_boundary(spec, state):
     """
     Test that after crossing an epoch boundary, get_ptc returns the cached
-    previous_ptc for the last slot of the previous epoch.
+    previous_epoch_last_ptc for the last slot of the previous epoch.
     """
     # Advance to first slot of next epoch
     target_slot = spec.SLOTS_PER_EPOCH
@@ -43,8 +43,8 @@ def test_get_ptc_returns_cached_previous_for_epoch_boundary(spec, state):
     last_slot_prev_epoch = spec.Slot(spec.SLOTS_PER_EPOCH - 1)
     ptc = spec.get_ptc(state, last_slot_prev_epoch)
 
-    # Should match previous_ptc cached during epoch processing
-    assert list(ptc) == list(state.previous_ptc)
+    # Should match previous_epoch_last_ptc cached during epoch processing
+    assert list(ptc) == list(state.previous_epoch_last_ptc)
     # Should not be all zeros (real PTC was cached)
     assert any(v != 0 for v in ptc)
 

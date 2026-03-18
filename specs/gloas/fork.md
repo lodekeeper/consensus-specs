@@ -160,7 +160,7 @@ def upgrade_to_gloas(pre: fulu.BeaconState) -> BeaconState:
         # [New in Gloas:EIP7732]
         payload_expected_withdrawals=[],
         # [New in Gloas:EIP7732]
-        previous_ptc=[ValidatorIndex(0)] * PTC_SIZE,
+        previous_epoch_last_ptc=[ValidatorIndex(0)] * PTC_SIZE,
     )
 
     # [New in Gloas:EIP7732]
