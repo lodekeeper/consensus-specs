@@ -1489,23 +1489,22 @@ def test_builder_sweep_index_wrap_around(spec, state):
 @spec_state_test
 def test_empty_parent_stale_withdrawals_diverge_from_fresh(spec, state):
     """
-    Demonstrates that after an empty parent block, state.payload_expected_withdrawals
-    (stale from the last full parent) differs from get_expected_withdrawals(state).
+    Test that stale payload_expected_withdrawals diverge from fresh computation after empty parent.
 
-    This proves that validator.md must use state.payload_expected_withdrawals when
-    preparing payload attributes after an empty parent — not get_expected_withdrawals().
-    Using fresh withdrawals would cause validate_execution_payload_envelope to reject
-    the envelope (the bug that killed epbs-devnet-0).
+    Input State Configured:
+        - state.builders[0]: Builder with pending withdrawal (1 ETH)
+        - First pass: parent_block_full=True (populates payload_expected_withdrawals)
+        - Second pass: parent_block_empty=True (early return, payload_expected_withdrawals unchanged)
 
-    Setup:
-        1. Process withdrawals with full parent (sets payload_expected_withdrawals = W)
-        2. Process withdrawals with empty parent (early return, W stays stale)
-        3. Verify: get_expected_withdrawals(state) != state.payload_expected_withdrawals
+    Output State Verified:
+        - payload_expected_withdrawals: Unchanged from first pass (stale)
+        - get_expected_withdrawals(state).withdrawals: Differs from stale value
+          (indices advanced, balances modified by first pass)
     """
     builder_index = 0
     withdrawal_amount = spec.Gwei(1_000_000_000)
 
-    # Step 1: Process with full parent to populate payload_expected_withdrawals
+    # First pass: full parent — populates payload_expected_withdrawals
     prepare_process_withdrawals(
         spec,
         state,
@@ -1517,32 +1516,16 @@ def test_empty_parent_stale_withdrawals_diverge_from_fresh(spec, state):
     yield "pre", state
     spec.process_withdrawals(state)
 
-    # Capture the withdrawals W set by the full-parent processing
     stale_withdrawals = list(state.payload_expected_withdrawals)
-    assert len(stale_withdrawals) > 0, "Full parent should have produced withdrawals"
+    assert len(stale_withdrawals) > 0
 
-    # Step 2: Make parent empty and process again
+    # Second pass: empty parent — early return, payload_expected_withdrawals stays stale
     state.latest_execution_payload_bid = state.latest_execution_payload_bid.copy()
     state.latest_execution_payload_bid.block_hash = b"\x00" * 32
-    assert not spec.is_parent_block_full(state), "Parent should be empty"
 
     spec.process_withdrawals(state)
 
-    # Step 3: Verify the divergence
-    # payload_expected_withdrawals is stale (unchanged from step 1)
-    assert list(state.payload_expected_withdrawals) == stale_withdrawals, (
-        "payload_expected_withdrawals must remain unchanged after empty parent"
-    )
-
-    # get_expected_withdrawals computes fresh (indices advanced, balances modified)
-    fresh = spec.get_expected_withdrawals(state)
-
-    # These MUST differ because step 1 advanced indices and modified balances
-    assert list(fresh.withdrawals) != stale_withdrawals, (
-        "Fresh computation must differ from stale payload_expected_withdrawals "
-        "after indices were advanced by the full parent's process_withdrawals. "
-        "This proves validator.md must use state.payload_expected_withdrawals, "
-        "not get_expected_withdrawals(), when parent is empty."
-    )
+    assert list(state.payload_expected_withdrawals) == stale_withdrawals
+    assert list(spec.get_expected_withdrawals(state).withdrawals) != stale_withdrawals
 
     yield "post", state
