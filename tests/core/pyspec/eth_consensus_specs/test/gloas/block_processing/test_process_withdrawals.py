@@ -1523,7 +1523,7 @@ def test_empty_parent_stale_withdrawals_diverge_from_fresh(spec, state):
 
     # Step 2: Make parent empty and process again
     state.latest_execution_payload_bid = state.latest_execution_payload_bid.copy()
-    state.latest_execution_payload_bid.block_hash = b'\x00' * 32
+    state.latest_execution_payload_bid.block_hash = b"\x00" * 32
     assert not spec.is_parent_block_full(state), "Parent should be empty"
 
     spec.process_withdrawals(state)
