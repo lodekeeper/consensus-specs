@@ -235,7 +235,9 @@ def prepare_execution_payload(
         prev_randao=get_randao_mix(state, get_current_epoch(state)),
         suggested_fee_recipient=suggested_fee_recipient,
         # [Modified in Gloas:EIP7732]
-        withdrawals=get_expected_withdrawals(state).withdrawals if is_parent_block_full(state) else state.payload_expected_withdrawals,
+        withdrawals=get_expected_withdrawals(state).withdrawals
+        if is_parent_block_full(state)
+        else state.payload_expected_withdrawals,
         parent_beacon_block_root=hash_tree_root(state.latest_block_header),
     )
     return execution_engine.notify_forkchoice_updated(
