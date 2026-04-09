@@ -931,6 +931,8 @@ def process_parent_execution_payload(state: BeaconState, block: BeaconBlock) -> 
     parent_bid = state.latest_execution_payload_bid
 
     # Determine parent payload status from block data
+    # Note: cannot use is_parent_block_full(state) here because latest_block_hash
+    # has not been updated yet -- this function is responsible for updating it.
     is_parent_full = bid.parent_block_hash == parent_bid.block_hash
 
     if is_parent_full:
@@ -1686,5 +1688,5 @@ def process_execution_payload(
     # Execution requests are verified by the execution engine and returned
     # for fork-choice level buffering. State mutations are deferred to
     # `process_parent_execution_payload` in the next block.
-    return envelope.execution_requests
+    return requests
 ```
