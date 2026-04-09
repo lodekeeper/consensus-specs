@@ -263,6 +263,9 @@ def is_payload_data_available(store: Store, root: Root) -> bool:
 ```python
 def get_parent_payload_status(store: Store, block: BeaconBlock) -> PayloadStatus:
     parent = store.blocks[block.parent_root]
+    # Pre-Gloas parents always had their payload embedded in the block
+    if compute_epoch_at_slot(parent.slot) < GLOAS_FORK_EPOCH:
+        return PAYLOAD_STATUS_FULL
     parent_block_hash = block.body.signed_execution_payload_bid.message.parent_block_hash
     message_block_hash = parent.body.signed_execution_payload_bid.message.block_hash
     return PAYLOAD_STATUS_FULL if parent_block_hash == message_block_hash else PAYLOAD_STATUS_EMPTY
