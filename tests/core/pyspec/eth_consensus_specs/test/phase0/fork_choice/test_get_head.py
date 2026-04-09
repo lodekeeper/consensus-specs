@@ -58,9 +58,9 @@ def test_genesis(spec, state):
 
     if is_post_gloas(spec):
         # Verify Gloas store fields
-        assert hasattr(store, "verified_execution_payloads")
+        assert hasattr(store, "execution_payloads")
         assert hasattr(store, "payload_timeliness_vote")
-        assert anchor_root in store.verified_execution_payloads
+        assert anchor_root in store.execution_payloads
         assert anchor_root in store.payload_timeliness_vote
 
         # Check PTC vote initialization

@@ -120,8 +120,6 @@ class Store(object):
     unrealized_finalized_checkpoint: Checkpoint
     proposer_boost_root: Root
     equivocating_indices: Set[ValidatorIndex]
-    # [Modified in Gloas:EIP7732]
-    verified_execution_payloads: Set[Root]
     blocks: Dict[Root, BeaconBlock] = field(default_factory=dict)
     block_states: Dict[Root, BeaconState] = field(default_factory=dict)
     block_timeliness: Dict[Root, Vector[boolean, NUM_BLOCK_TIMELINESS_DEADLINES]] = field(
@@ -134,6 +132,7 @@ class Store(object):
     payload_data_availability_vote: Dict[Root, Vector[boolean, PTC_SIZE]] = field(
         default_factory=dict
     )
+    execution_payloads: Set[Root] = field(default_factory=set)
     # [New in Heze:EIP7805]
     payload_inclusion_list_satisfaction: Dict[Root, boolean] = field(default_factory=dict)
 ```
@@ -162,7 +161,7 @@ def get_forkchoice_store(anchor_state: BeaconState, anchor_block: BeaconBlock) -
         block_timeliness={anchor_root: [True, True]},
         checkpoint_states={justified_checkpoint: copy(anchor_state)},
         unrealized_justifications={anchor_root: justified_checkpoint},
-        verified_execution_payloads={anchor_root},
+        execution_payloads={anchor_root},
         payload_timeliness_vote={
             anchor_root: Vector[boolean, PTC_SIZE](True for _ in range(PTC_SIZE))
         },
@@ -214,7 +213,7 @@ def is_payload_inclusion_list_satisfied(store: Store, root: Root) -> bool:
 
     # If the payload is not locally available, the payload
     # is not considered to satisfy the inclusion list constraints
-    if root not in store.verified_execution_payloads:
+    if root not in store.execution_payloads:
         return False
 
     return store.payload_inclusion_list_satisfaction[root]
@@ -319,5 +318,5 @@ def on_execution_payload(store: Store, signed_envelope: SignedExecutionPayloadEn
     )
 
     # Mark this block's execution payload as verified
-    store.verified_execution_payloads.add(envelope.beacon_block_root)
+    store.execution_payloads.add(envelope.beacon_block_root)
 ```

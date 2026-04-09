@@ -291,7 +291,7 @@ Each file is an SSZ-snappy encoded `SignedExecutionPayloadEnvelope`.
    initialize the local store object with
    `get_forkchoice_store(anchor_state, anchor_block)` helper. For Gloas and
    later forks: the anchor block's verified execution payload is initialized by
-   seeding `verified_execution_payloads` with `{anchor_root}`, as specified in
+   seeding `execution_payloads` with `{anchor_root}`, as specified in
    `get_forkchoice_store`.
 2. Iterate sequentially through `steps.yaml`
    - For each execution, look up the corresponding ssz_snappy file. Execute the
