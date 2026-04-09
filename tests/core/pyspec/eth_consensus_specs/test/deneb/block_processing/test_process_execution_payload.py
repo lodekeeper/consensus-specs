@@ -45,25 +45,12 @@ def run_execution_payload_processing(
         # Ensure bid fields match payload for assertions to pass
         state.latest_execution_payload_bid.gas_limit = execution_payload.gas_limit
         state.latest_execution_payload_bid.block_hash = execution_payload.block_hash
-        post_state = state.copy()
-        previous_state_root = state.hash_tree_root()
-        if post_state.latest_block_header.state_root == spec.Root():
-            post_state.latest_block_header.state_root = previous_state_root
-        envelope.beacon_block_root = post_state.latest_block_header.hash_tree_root()
+        # Cache latest block header state root for beacon_block_root computation
+        if state.latest_block_header.state_root == spec.Root():
+            state.latest_block_header.state_root = state.hash_tree_root()
+        envelope.beacon_block_root = state.latest_block_header.hash_tree_root()
 
-        payment = post_state.builder_pending_payments[
-            spec.SLOTS_PER_EPOCH + state.slot % spec.SLOTS_PER_EPOCH
-        ]
-        amount = payment.withdrawal.amount
-        if amount > 0:
-            post_state.builder_pending_withdrawals.append(payment.withdrawal)
-        post_state.builder_pending_payments[
-            spec.SLOTS_PER_EPOCH + state.slot % spec.SLOTS_PER_EPOCH
-        ] = spec.BuilderPendingPayment()
-
-        post_state.execution_payload_availability[state.slot % spec.SLOTS_PER_HISTORICAL_ROOT] = 0b1
-        post_state.latest_block_hash = execution_payload.block_hash
-        envelope.state_root = post_state.hash_tree_root()
+        # process_execution_payload is pure verification -- no state_root needed
         if envelope.builder_index == spec.BUILDER_INDEX_SELF_BUILD:
             privkey = privkeys[state.latest_block_header.proposer_index]
         else:

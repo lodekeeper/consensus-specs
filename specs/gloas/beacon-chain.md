@@ -267,6 +267,8 @@ class ExecutionPayloadBid(Container):
     value: Gwei
     execution_payment: Gwei
     blob_kzg_commitments: List[KZGCommitment, MAX_BLOB_COMMITMENTS_PER_BLOCK]
+    # [New in Gloas:EIP7732]
+    execution_requests_root: Root
 ```
 
 #### `SignedExecutionPayloadBid`
@@ -934,6 +936,12 @@ def process_parent_execution_payload(state: BeaconState, block: BeaconBlock) -> 
 
     if is_parent_full:
         parent_slot = state.latest_block_header.slot
+
+        # Verify that the execution requests match the bid commitment
+        assert (
+            hash_tree_root(block.body.parent_execution_requests)
+            == parent_bid.execution_requests_root
+        )
 
         # Process deferred execution requests from parent's payload
         # Note: state.slot is the current block's slot, not the parent's.
