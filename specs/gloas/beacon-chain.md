@@ -286,9 +286,6 @@ class ExecutionPayloadEnvelope(Container):
     builder_index: BuilderIndex
     beacon_block_root: Root
     slot: Slot
-    # [Modified in Gloas]
-    # Removed `state_root` -- redundant with `beacon_block_root`
-    # since `process_execution_payload` no longer mutates state
 ```
 
 #### `SignedExecutionPayloadEnvelope`
@@ -328,7 +325,7 @@ class BeaconBlockBody(Container):
     signed_execution_payload_bid: SignedExecutionPayloadBid
     # [New in Gloas:EIP7732]
     payload_attestations: List[PayloadAttestation, MAX_PAYLOAD_ATTESTATIONS]
-    # [New in Gloas]
+    # [New in Gloas:EIP7732]
     parent_execution_requests: ExecutionRequests
 ```
 
@@ -899,7 +896,7 @@ def process_ptc_window(state: BeaconState) -> None:
 
 ```python
 def process_block(state: BeaconState, block: BeaconBlock) -> None:
-    # [New in Gloas]
+    # [New in Gloas:EIP7732]
     process_parent_execution_payload(state, block)
     process_block_header(state, block)
     # [Modified in Gloas:EIP7732]
@@ -1613,10 +1610,11 @@ def verify_execution_payload_envelope_signature(
 
 #### New `process_execution_payload`
 
-*Note*: `process_execution_payload` is now a pure verification step in state
-transition. It is called when importing a signed execution payload proposed by
-the builder of the current slot and returns the verified `ExecutionRequests`
-without mutating `state`.
+*Note*: `process_execution_payload` is a pure verification function called by
+fork-choice when importing a signed execution payload. It verifies the payload
+against the execution engine and returns the `ExecutionRequests` without
+mutating `state`. Actual state mutations are deferred to
+`process_parent_execution_payload` in the next block.
 
 ```python
 def process_execution_payload(
@@ -1684,9 +1682,5 @@ def process_execution_payload(
         )
     )
 
-    # [Modified in Gloas]
-    # Execution requests are verified by the execution engine and returned
-    # for fork-choice level buffering. State mutations are deferred to
-    # `process_parent_execution_payload` in the next block.
     return requests
 ```
