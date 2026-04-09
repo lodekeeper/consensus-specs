@@ -262,7 +262,11 @@ def is_payload_data_available(store: Store, root: Root) -> bool:
 
 ```python
 def get_parent_payload_status(store: Store, block: BeaconBlock) -> PayloadStatus:
-    return PAYLOAD_STATUS_FULL if block.parent_root in store.verified_execution_requests else PAYLOAD_STATUS_EMPTY
+    return (
+        PAYLOAD_STATUS_FULL
+        if block.parent_root in store.verified_execution_requests
+        else PAYLOAD_STATUS_EMPTY
+    )
 ```
 
 ### New `is_parent_node_full`
@@ -726,8 +730,8 @@ def get_payload_attestation_due_ms(epoch: Epoch) -> uint64:
 
 *Note*: The handler `on_block` is modified to verify the deferred execution
 requests from the parent payload against fork-choice-level payload verification.
-In addition we delay the checking of blob data availability until the
-processing of the execution payload.
+In addition we delay the checking of blob data availability until the processing
+of the execution payload.
 
 ```python
 def on_block(store: Store, signed_block: SignedBeaconBlock) -> None:
@@ -744,9 +748,10 @@ def on_block(store: Store, signed_block: SignedBeaconBlock) -> None:
     # [Modified in Gloas:EIP7732]
     # Verify parent execution requests match EE-verified data
     if is_parent_node_full(store, block):
-        assert block.body.parent_execution_requests == store.verified_execution_requests[
-            block.parent_root
-        ]
+        assert (
+            block.body.parent_execution_requests
+            == store.verified_execution_requests[block.parent_root]
+        )
     else:
         parent_bid = parent_block.body.signed_execution_payload_bid.message
         assert bid.parent_block_hash == parent_bid.parent_block_hash

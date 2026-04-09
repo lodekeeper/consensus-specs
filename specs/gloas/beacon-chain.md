@@ -806,9 +806,9 @@ payload envelope `signed_envelope` is verified by
 returns the verified `ExecutionRequests` without mutating `state`. Execution
 requests are deferred to the next beacon block via
 `process_parent_execution_payload`. State transitions that trigger an unhandled
-exception (e.g. a failed `assert` or an out-of-range list access) are
-considered invalid. State transitions that cause an `uint64` overflow or
-underflow are also considered invalid.
+exception (e.g. a failed `assert` or an out-of-range list access) are considered
+invalid. State transitions that cause an `uint64` overflow or underflow are also
+considered invalid.
 
 ### Modified `process_slot`
 
