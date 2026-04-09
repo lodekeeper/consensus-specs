@@ -144,10 +144,9 @@ class Store(object):
     checkpoint_states: Dict[Checkpoint, BeaconState] = field(default_factory=dict)
     latest_messages: Dict[ValidatorIndex, LatestMessage] = field(default_factory=dict)
     unrealized_justifications: Dict[Root, Checkpoint] = field(default_factory=dict)
-    # [Modified in Gloas]
-    # Removed `payload_states` -- process_execution_payload no longer mutates state
-    # [New in Gloas]
-    # Pruned on finalization along with other fork-choice store maps
+    # [Modified in Gloas:EIP7732]
+    # Removed `payload_states`
+    # [New in Gloas:EIP7732]
     verified_execution_requests: Dict[Root, ExecutionRequests] = field(default_factory=dict)
     # [New in Gloas:EIP7732]
     payload_timeliness_vote: Dict[Root, Vector[boolean, PTC_SIZE]] = field(default_factory=dict)
@@ -182,7 +181,7 @@ def get_forkchoice_store(anchor_state: BeaconState, anchor_block: BeaconBlock) -
         block_timeliness={anchor_root: [True, True]},
         checkpoint_states={justified_checkpoint: copy(anchor_state)},
         unrealized_justifications={anchor_root: justified_checkpoint},
-        # [New in Gloas]
+        # [New in Gloas:EIP7732]
         verified_execution_requests={anchor_root: ExecutionRequests()},
         # [New in Gloas:EIP7732]
         payload_timeliness_vote={
@@ -746,7 +745,7 @@ def on_block(store: Store, signed_block: SignedBeaconBlock) -> None:
     parent_block = store.blocks[block.parent_root]
     bid = block.body.signed_execution_payload_bid.message
     parent_bid = parent_block.body.signed_execution_payload_bid.message
-    # [Modified in Gloas]
+    # [Modified in Gloas:EIP7732]
     # Verify parent execution requests match EE-verified data
     if is_parent_node_full(store, block):
         assert block.parent_root in store.verified_execution_requests
@@ -757,8 +756,7 @@ def on_block(store: Store, signed_block: SignedBeaconBlock) -> None:
         assert bid.parent_block_hash == parent_bid.parent_block_hash
         assert block.body.parent_execution_requests == ExecutionRequests()
 
-    # [Modified in Gloas]
-    # Always start from block_states -- payload effects are deferred to process_parent_execution_payload
+    # [Modified in Gloas:EIP7732]
     state = copy(store.block_states[block.parent_root])
 
     # Blocks cannot be in the future. If they are, their consideration must be delayed until they are in the past.
@@ -839,14 +837,11 @@ def on_execution_payload(store: Store, signed_envelope: SignedExecutionPayloadEn
     # If not, this payload MAY be queued and subsequently considered when blob data becomes available
     assert is_data_available(envelope.beacon_block_root)
 
-    # [Modified in Gloas]
-    # Pure verification on a temporary copy (discarded after)
+    # Pure verification on a temporary state copy
     state = copy(store.block_states[envelope.beacon_block_root])
-
     verified_requests = process_execution_payload(state, signed_envelope, EXECUTION_ENGINE)
 
-    # [Modified in Gloas]
-    # Store verified execution requests for next block verification
+    # Buffer verified requests for next block's on_block verification
     store.verified_execution_requests[envelope.beacon_block_root] = verified_requests
 ```
 

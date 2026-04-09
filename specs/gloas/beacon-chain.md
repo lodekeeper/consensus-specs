@@ -1619,12 +1619,8 @@ mutating `state`. Actual state mutations are deferred to
 ```python
 def process_execution_payload(
     state: BeaconState,
-    # [Modified in Gloas:EIP7732]
-    # Removed `body`
-    # [New in Gloas:EIP7732]
     signed_envelope: SignedExecutionPayloadEnvelope,
     execution_engine: ExecutionEngine,
-    # [New in Gloas:EIP7732]
     verify: bool = True,
 ) -> ExecutionRequests:
     envelope = signed_envelope.message
@@ -1669,7 +1665,6 @@ def process_execution_payload(
     # Verify the execution payload is valid
     versioned_hashes = [
         kzg_commitment_to_versioned_hash(commitment)
-        # [Modified in Gloas:EIP7732]
         for commitment in committed_bid.blob_kzg_commitments
     ]
     requests = envelope.execution_requests
