@@ -924,6 +924,11 @@ def process_parent_execution_payload(state: BeaconState, block: BeaconBlock) -> 
     ``state.latest_block_header.slot`` and ``state.latest_execution_payload_bid``
     which are overwritten by ``process_block_header`` and ``process_execution_payload_bid``.
     """
+    # No deferred processing for the first Gloas block (parent is pre-Gloas)
+    if compute_epoch_at_slot(state.latest_block_header.slot) < GLOAS_FORK_EPOCH:
+        assert block.body.parent_execution_requests == ExecutionRequests()
+        return
+
     bid = block.body.signed_execution_payload_bid.message
     parent_bid = state.latest_execution_payload_bid
 
