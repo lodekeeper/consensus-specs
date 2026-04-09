@@ -128,7 +128,8 @@ class Store(object):
     checkpoint_states: Dict[Checkpoint, BeaconState] = field(default_factory=dict)
     latest_messages: Dict[ValidatorIndex, LatestMessage] = field(default_factory=dict)
     unrealized_justifications: Dict[Root, Checkpoint] = field(default_factory=dict)
-    payload_states: Dict[Root, BeaconState] = field(default_factory=dict)
+    # [Modified in Gloas:EIP7732]
+    verified_execution_requests: Dict[Root, ExecutionRequests] = field(default_factory=dict)
     payload_timeliness_vote: Dict[Root, Vector[boolean, PTC_SIZE]] = field(default_factory=dict)
     payload_data_availability_vote: Dict[Root, Vector[boolean, PTC_SIZE]] = field(
         default_factory=dict
@@ -161,7 +162,7 @@ def get_forkchoice_store(anchor_state: BeaconState, anchor_block: BeaconBlock) -
         block_timeliness={anchor_root: [True, True]},
         checkpoint_states={justified_checkpoint: copy(anchor_state)},
         unrealized_justifications={anchor_root: justified_checkpoint},
-        payload_states={anchor_root: copy(anchor_state)},
+        verified_execution_requests={anchor_root: ExecutionRequests()},
         payload_timeliness_vote={
             anchor_root: Vector[boolean, PTC_SIZE](True for _ in range(PTC_SIZE))
         },
@@ -213,7 +214,7 @@ def is_payload_inclusion_list_satisfied(store: Store, root: Root) -> bool:
 
     # If the payload is not locally available, the payload
     # is not considered to satisfy the inclusion list constraints
-    if root not in store.payload_states:
+    if root not in store.verified_execution_requests:
         return False
 
     return store.payload_inclusion_list_satisfaction[root]
@@ -303,8 +304,8 @@ def on_execution_payload(store: Store, signed_envelope: SignedExecutionPayloadEn
     # Make a copy of the state to avoid mutability issues
     state = copy(store.block_states[envelope.beacon_block_root])
 
-    # Process the execution payload
-    process_execution_payload(state, signed_envelope, EXECUTION_ENGINE)
+    # Pure verification on a temporary state copy
+    verified_requests = process_execution_payload(state, signed_envelope, EXECUTION_ENGINE)
 
     # [New in Heze:EIP7805]
     # Check if this payload satisfies the inclusion list constraints
@@ -313,6 +314,6 @@ def on_execution_payload(store: Store, signed_envelope: SignedExecutionPayloadEn
         store, state, envelope.beacon_block_root, envelope.payload, EXECUTION_ENGINE
     )
 
-    # Add new state for this payload to the store
-    store.payload_states[envelope.beacon_block_root] = state
+    # Buffer verified requests for next block's on_block verification
+    store.verified_execution_requests[envelope.beacon_block_root] = verified_requests
 ```
