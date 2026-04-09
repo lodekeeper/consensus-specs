@@ -61,8 +61,8 @@ def test_on_execution_payload(spec, state):
     envelope = build_signed_execution_payload_envelope(spec, state, block_root, signed_block)
     yield from add_execution_payload(spec, store, envelope, test_steps, valid=True)
 
-    # Block root should now be stored in execution_payloads after payload reveal
-    assert block_root in store.execution_payloads
+    # Block root should now be stored in payload_states after payload reveal
+    assert block_root in store.payload_states
     head = spec.get_head(store)
     assert head.payload_status == spec.PAYLOAD_STATUS_FULL
 

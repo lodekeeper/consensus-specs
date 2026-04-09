@@ -199,9 +199,6 @@ def create_genesis_state(spec, validator_balances, activation_threshold):
     if is_post_gloas(spec):
         # Initialize the latest_execution_payload_bid
         genesis_block_body.signed_execution_payload_bid.message.block_hash = eth1_block_hash
-        state.latest_execution_payload_bid.execution_requests_root = (
-            spec.ExecutionRequests().hash_tree_root()
-        )
     elif is_post_bellatrix(spec):
         # Initialize the execution payload header (with block number and genesis time set to 0)
         state.latest_execution_payload_header = get_sample_genesis_execution_payload_header(

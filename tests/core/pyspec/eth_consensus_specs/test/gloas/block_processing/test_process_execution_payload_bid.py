@@ -103,7 +103,6 @@ def prepare_signed_execution_payload_bid(
         slot=slot,
         value=value,
         blob_kzg_commitments=blob_kzg_commitments,
-        execution_requests_root=spec.ExecutionRequests().hash_tree_root(),
     )
 
     if valid_signature:
@@ -369,7 +368,6 @@ def test_process_execution_payload_bid_self_build_non_zero_value(spec, state):
         slot=block.slot,
         value=spec.Gwei(1),
         blob_kzg_commitments=kzg_list,
-        execution_requests_root=spec.ExecutionRequests().hash_tree_root(),
     )
 
     # Sign the bid

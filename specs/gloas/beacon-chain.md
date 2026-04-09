@@ -267,8 +267,6 @@ class ExecutionPayloadBid(Container):
     value: Gwei
     execution_payment: Gwei
     blob_kzg_commitments: List[KZGCommitment, MAX_BLOB_COMMITMENTS_PER_BLOCK]
-    # [New in Gloas:EIP7732]
-    execution_requests_root: Root
 ```
 
 #### `SignedExecutionPayloadBid`
@@ -808,9 +806,9 @@ payload envelope `signed_envelope` is verified by
 returns the verified `ExecutionRequests` without mutating `state`. Execution
 requests are deferred to the next beacon block via
 `process_parent_execution_payload`. State transitions that trigger an unhandled
-exception (e.g. a failed `assert` or an out-of-range list access) are considered
-invalid. State transitions that cause an `uint64` overflow or underflow are also
-considered invalid.
+exception (e.g. a failed `assert` or an out-of-range list access) are
+considered invalid. State transitions that cause an `uint64` overflow or
+underflow are also considered invalid.
 
 ### Modified `process_slot`
 
@@ -926,6 +924,11 @@ def process_parent_execution_payload(state: BeaconState, block: BeaconBlock) -> 
     ``state.latest_block_header.slot`` and ``state.latest_execution_payload_bid``
     which are overwritten by ``process_block_header`` and ``process_execution_payload_bid``.
     """
+    # No deferred processing for the first Gloas block (parent is pre-Gloas)
+    if compute_epoch_at_slot(state.latest_block_header.slot) < GLOAS_FORK_EPOCH:
+        assert block.body.parent_execution_requests == ExecutionRequests()
+        return
+
     bid = block.body.signed_execution_payload_bid.message
     parent_bid = state.latest_execution_payload_bid
 
@@ -936,12 +939,6 @@ def process_parent_execution_payload(state: BeaconState, block: BeaconBlock) -> 
 
     if is_parent_full:
         parent_slot = state.latest_block_header.slot
-
-        # Verify that the execution requests match the bid commitment
-        assert (
-            hash_tree_root(block.body.parent_execution_requests)
-            == parent_bid.execution_requests_root
-        )
 
         # Process deferred execution requests from parent's payload
         # Note: state.slot is the current block's slot, not the parent's.

@@ -42,6 +42,9 @@ def run_execution_payload_processing(
             payload=execution_payload,
             beacon_block_root=state.latest_block_header.hash_tree_root(),
         )
+        post_state = state.copy()
+        post_state.latest_block_hash = execution_payload.block_hash
+        envelope.state_root = post_state.hash_tree_root()
         if envelope.builder_index == spec.BUILDER_INDEX_SELF_BUILD:
             privkey = privkeys[state.latest_block_header.proposer_index]
         else:
