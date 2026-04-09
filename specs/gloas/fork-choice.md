@@ -147,6 +147,7 @@ class Store(object):
     # [Modified in Gloas]
     # Removed `payload_states` -- process_execution_payload no longer mutates state
     # [New in Gloas]
+    # Pruned on finalization along with other fork-choice store maps
     verified_execution_requests: Dict[Root, ExecutionRequests] = field(default_factory=dict)
     # [New in Gloas:EIP7732]
     payload_timeliness_vote: Dict[Root, Vector[boolean, PTC_SIZE]] = field(default_factory=dict)

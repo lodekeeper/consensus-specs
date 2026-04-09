@@ -937,6 +937,9 @@ def process_parent_execution_payload(state: BeaconState, block: BeaconBlock) -> 
         parent_slot = state.latest_block_header.slot
 
         # Process deferred execution requests from parent's payload
+        # Note: state.slot is the current block's slot, not the parent's.
+        # Execution request functions use state.slot for PendingDeposit.slot
+        # and builder deposit_epoch, shifting them by at least one slot.
         requests = block.body.parent_execution_requests
         for request in requests.deposits:
             process_deposit_request(state, request)
@@ -1674,7 +1677,7 @@ def process_execution_payload(
         NewPayloadRequest(
             execution_payload=payload,
             versioned_hashes=versioned_hashes,
-            parent_beacon_block_root=state.latest_block_header.parent_root,
+            parent_beacon_block_root=latest_block_header.parent_root,
             execution_requests=requests,
         )
     )
