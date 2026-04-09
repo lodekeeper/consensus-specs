@@ -122,9 +122,8 @@ def update_latest_messages(
 
 ### Modified `Store`
 
-*Note*: `Store` is modified to track the intermediate states of "empty"
-consensus blocks, that is, those consensus blocks for which the corresponding
-execution payload has not been revealed or has not been included on chain.
+*Note*: `Store` is modified to track EE-verified `ExecutionRequests` for
+consensus blocks whose execution payloads have been verified.
 
 ```python
 @dataclass
@@ -145,8 +144,10 @@ class Store(object):
     checkpoint_states: Dict[Checkpoint, BeaconState] = field(default_factory=dict)
     latest_messages: Dict[ValidatorIndex, LatestMessage] = field(default_factory=dict)
     unrealized_justifications: Dict[Root, Checkpoint] = field(default_factory=dict)
-    # [New in Gloas:EIP7732]
-    payload_states: Dict[Root, BeaconState] = field(default_factory=dict)
+    # [Modified in Gloas]
+    # Removed `payload_states` -- process_execution_payload no longer mutates state
+    # [New in Gloas]
+    verified_execution_requests: Dict[Root, ExecutionRequests] = field(default_factory=dict)
     # [New in Gloas:EIP7732]
     payload_timeliness_vote: Dict[Root, Vector[boolean, PTC_SIZE]] = field(default_factory=dict)
     # [New in Gloas:EIP7732]
@@ -180,8 +181,8 @@ def get_forkchoice_store(anchor_state: BeaconState, anchor_block: BeaconBlock) -
         block_timeliness={anchor_root: [True, True]},
         checkpoint_states={justified_checkpoint: copy(anchor_state)},
         unrealized_justifications={anchor_root: justified_checkpoint},
-        # [New in Gloas:EIP7732]
-        payload_states={anchor_root: copy(anchor_state)},
+        # [New in Gloas]
+        verified_execution_requests={anchor_root: ExecutionRequests()},
         # [New in Gloas:EIP7732]
         payload_timeliness_vote={
             anchor_root: Vector[boolean, PTC_SIZE](True for _ in range(PTC_SIZE))
@@ -230,9 +231,9 @@ def is_payload_timely(store: Store, root: Root) -> bool:
     # The beacon block root must be known
     assert root in store.payload_timeliness_vote
 
-    # If the payload is not locally available, the payload
+    # If the payload is not locally verified, the payload
     # is not considered available regardless of the PTC vote
-    if root not in store.payload_states:
+    if root not in store.verified_execution_requests:
         return False
 
     return sum(store.payload_timeliness_vote[root]) > PAYLOAD_TIMELY_THRESHOLD
@@ -249,9 +250,9 @@ def is_payload_data_available(store: Store, root: Root) -> bool:
     # The beacon block root must be known
     assert root in store.payload_data_availability_vote
 
-    # If the payload is not locally available, the blob data
+    # If the payload is not locally verified, the blob data
     # is not considered available regardless of the PTC vote
-    if root not in store.payload_states:
+    if root not in store.verified_execution_requests:
         return False
 
     return sum(store.payload_data_availability_vote[root]) > DATA_AVAILABILITY_TIMELY_THRESHOLD
@@ -488,7 +489,7 @@ def get_node_children(
 ) -> Sequence[ForkChoiceNode]:
     if node.payload_status == PAYLOAD_STATUS_PENDING:
         children = [ForkChoiceNode(root=node.root, payload_status=PAYLOAD_STATUS_EMPTY)]
-        if node.root in store.payload_states:
+        if node.root in store.verified_execution_requests:
             children.append(ForkChoiceNode(root=node.root, payload_status=PAYLOAD_STATUS_FULL))
         return children
     else:
@@ -603,9 +604,9 @@ def validate_on_attestation(store: Store, attestation: Attestation, is_from_bloc
     if block_slot == attestation.data.slot:
         assert attestation.data.index == 0
     # [New in Gloas:EIP7732]
-    # If attesting for a full node, the payload must be known
+    # If attesting for a full node, the payload must be verified
     if attestation.data.index == 1:
-        assert attestation.data.beacon_block_root in store.payload_states
+        assert attestation.data.beacon_block_root in store.verified_execution_requests
 
     # LMD vote must be consistent with FFG vote target
     assert target.root == get_checkpoint_block(
@@ -726,10 +727,10 @@ def get_payload_attestation_due_ms(epoch: Epoch) -> uint64:
 
 ### Modified `on_block`
 
-*Note*: The handler `on_block` is modified to consider the pre `state` of the
-given consensus beacon block depending not only on the parent block root, but
-also on the parent blockhash. In addition we delay the checking of blob data
-availability until the processing of the execution payload.
+*Note*: The handler `on_block` is modified to verify the deferred execution
+requests from the parent payload against fork-choice-level payload verification.
+In addition we delay the checking of blob data availability until the
+processing of the execution payload.
 
 ```python
 def on_block(store: Store, signed_block: SignedBeaconBlock) -> None:
@@ -744,13 +745,20 @@ def on_block(store: Store, signed_block: SignedBeaconBlock) -> None:
     parent_block = store.blocks[block.parent_root]
     bid = block.body.signed_execution_payload_bid.message
     parent_bid = parent_block.body.signed_execution_payload_bid.message
-    # Make a copy of the state to avoid mutability issues
+    # [Modified in Gloas]
+    # Verify parent execution requests match EE-verified data
     if is_parent_node_full(store, block):
-        assert block.parent_root in store.payload_states
-        state = copy(store.payload_states[block.parent_root])
+        assert block.parent_root in store.verified_execution_requests
+        assert block.body.parent_execution_requests == store.verified_execution_requests[
+            block.parent_root
+        ]
     else:
         assert bid.parent_block_hash == parent_bid.parent_block_hash
-        state = copy(store.block_states[block.parent_root])
+        assert block.body.parent_execution_requests == ExecutionRequests()
+
+    # [Modified in Gloas]
+    # Always start from block_states -- payload effects are deferred to process_parent_execution_payload
+    state = copy(store.block_states[block.parent_root])
 
     # Blocks cannot be in the future. If they are, their consideration must be delayed until they are in the past.
     current_slot = get_current_slot(store)
@@ -830,14 +838,15 @@ def on_execution_payload(store: Store, signed_envelope: SignedExecutionPayloadEn
     # If not, this payload MAY be queued and subsequently considered when blob data becomes available
     assert is_data_available(envelope.beacon_block_root)
 
-    # Make a copy of the state to avoid mutability issues
+    # [Modified in Gloas]
+    # Pure verification on a temporary copy (discarded after)
     state = copy(store.block_states[envelope.beacon_block_root])
 
-    # Process the execution payload
-    process_execution_payload(state, signed_envelope, EXECUTION_ENGINE)
+    verified_requests = process_execution_payload(state, signed_envelope, EXECUTION_ENGINE)
 
-    # Add new state for this payload to the store
-    store.payload_states[envelope.beacon_block_root] = state
+    # [Modified in Gloas]
+    # Store verified execution requests for next block verification
+    store.verified_execution_requests[envelope.beacon_block_root] = verified_requests
 ```
 
 ### New `on_payload_attestation_message`
