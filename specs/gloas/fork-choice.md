@@ -848,6 +848,9 @@ def on_execution_payload(store: Store, signed_envelope: SignedExecutionPayloadEn
 
     # Verify execution payload on a temporary state copy
     state = copy(store.block_states[envelope.beacon_block_root])
+    # Cache latest block header state root (process_execution_payload must not mutate state)
+    if state.latest_block_header.state_root == Root():
+        state.latest_block_header.state_root = hash_tree_root(state)
     process_execution_payload(state, signed_envelope, EXECUTION_ENGINE)
 
     # Verify that the execution requests match the bid commitment

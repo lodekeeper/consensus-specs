@@ -1651,11 +1651,6 @@ def process_execution_payload(
     if verify:
         assert verify_execution_payload_envelope_signature(state, signed_envelope)
 
-    # Cache latest block header state root
-    previous_state_root = hash_tree_root(state)
-    if state.latest_block_header.state_root == Root():
-        state.latest_block_header.state_root = previous_state_root
-
     # Verify consistency with the beacon block
     assert envelope.beacon_block_root == hash_tree_root(state.latest_block_header)
     assert envelope.slot == state.slot
