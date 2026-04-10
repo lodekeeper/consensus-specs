@@ -745,7 +745,7 @@ def on_block(store: Store, signed_block: SignedBeaconBlock) -> None:
     bid = block.body.signed_execution_payload_bid.message
     parent_bid = parent_block.body.signed_execution_payload_bid.message
     # [Modified in Gloas:EIP7732]
-    # Verify parent execution requests against the verified payload data
+    # Verify parent execution requests against the parent bid commitment
     if is_parent_node_full(store, block):
         assert block.parent_root in store.payloads
         assert (
