@@ -180,7 +180,7 @@ def get_forkchoice_store(anchor_state: BeaconState, anchor_block: BeaconBlock) -
         checkpoint_states={justified_checkpoint: copy(anchor_state)},
         unrealized_justifications={anchor_root: justified_checkpoint},
         # [New in Gloas:EIP7732]
-        payloads={anchor_root},
+        payloads=set(),
         # [New in Gloas:EIP7732]
         payload_timeliness_vote={
             anchor_root: Vector[boolean, PTC_SIZE](True for _ in range(PTC_SIZE))
@@ -747,7 +747,11 @@ def on_block(store: Store, signed_block: SignedBeaconBlock) -> None:
     # [Modified in Gloas:EIP7732]
     # Verify parent execution requests against the parent bid commitment
     if is_parent_node_full(store, block):
-        assert block.parent_root in store.payloads
+        # Finalized parents are trusted without local payload verification
+        assert (
+            block.parent_root in store.payloads
+            or compute_epoch_at_slot(parent_block.slot) <= store.finalized_checkpoint.epoch
+        )
         assert (
             hash_tree_root(block.body.parent_execution_requests)
             == parent_bid.execution_requests_root
