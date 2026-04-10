@@ -804,8 +804,7 @@ out-of-range list access) are considered invalid. State transitions that cause a
 
 The validity of a signed execution payload envelope `signed_envelope` against a
 pre-state `state` is checked by
-`process_execution_payload(state, signed_envelope, execution_engine)`, which
-returns the verified `ExecutionRequests` without mutating `state`. Deferred
+`process_execution_payload(state, signed_envelope, execution_engine)`. Deferred
 effects from the parent payload — execution requests, builder payment, payload
 availability, and latest block hash — are applied in the next beacon block via
 `process_parent_execution_payload`. Verification failures that trigger an
@@ -1630,9 +1629,9 @@ def verify_execution_payload_envelope_signature(
 
 *Note*: `process_execution_payload` is a verification function called by
 fork-choice when importing a signed execution payload. It verifies the payload
-against the execution engine and returns the verified `ExecutionRequests`
-without processing them or updating state. Actual state mutations are deferred
-to `process_parent_execution_payload` in the next block.
+against the execution engine without processing execution requests or updating
+state. Actual state mutations are deferred to
+`process_parent_execution_payload` in the next block.
 
 ```python
 def process_execution_payload(
@@ -1644,7 +1643,7 @@ def process_execution_payload(
     execution_engine: ExecutionEngine,
     # [New in Gloas:EIP7732]
     verify: bool = True,
-) -> ExecutionRequests:
+) -> None:
     envelope = signed_envelope.message
     payload = envelope.payload
 
@@ -1694,5 +1693,4 @@ def process_execution_payload(
 
     # Execution request processing, builder payment queueing, availability updates,
     # and latest block hash updates are deferred to the next beacon block.
-    return requests
 ```
