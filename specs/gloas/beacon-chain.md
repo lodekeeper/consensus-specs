@@ -1644,7 +1644,7 @@ def process_execution_payload(
     execution_engine: ExecutionEngine,
     # [New in Gloas:EIP7732]
     verify: bool = True,
-) -> None:
+) -> ExecutionRequests:
     envelope = signed_envelope.message
     payload = envelope.payload
 
@@ -1689,4 +1689,5 @@ def process_execution_payload(
 
     # Execution request processing, builder payment queueing, availability updates,
     # and latest block hash updates are deferred to the next beacon block.
+    return requests
 ```
