@@ -120,6 +120,7 @@ class Store(object):
     unrealized_finalized_checkpoint: Checkpoint
     proposer_boost_root: Root
     equivocating_indices: Set[ValidatorIndex]
+    payloads: Set[Root]
     blocks: Dict[Root, BeaconBlock] = field(default_factory=dict)
     block_states: Dict[Root, BeaconState] = field(default_factory=dict)
     block_timeliness: Dict[Root, Vector[boolean, NUM_BLOCK_TIMELINESS_DEADLINES]] = field(
@@ -128,7 +129,6 @@ class Store(object):
     checkpoint_states: Dict[Checkpoint, BeaconState] = field(default_factory=dict)
     latest_messages: Dict[ValidatorIndex, LatestMessage] = field(default_factory=dict)
     unrealized_justifications: Dict[Root, Checkpoint] = field(default_factory=dict)
-    payloads: Set[Root]
     payload_timeliness_vote: Dict[Root, Vector[boolean, PTC_SIZE]] = field(default_factory=dict)
     payload_data_availability_vote: Dict[Root, Vector[boolean, PTC_SIZE]] = field(
         default_factory=dict
