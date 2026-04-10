@@ -978,6 +978,9 @@ def process_parent_execution_payload(state: BeaconState, block: BeaconBlock) -> 
             if amount > 0:
                 state.builder_pending_withdrawals.append(payment.withdrawal)
             state.builder_pending_payments[payment_index] = BuilderPendingPayment()
+        # Note: if parent is older than previous_epoch, the payment entry
+        # has already been settled or evicted by process_builder_pending_payments
+        # at epoch boundaries. No action needed.
 
         # Update latest block hash
         state.latest_block_hash = bid.parent_block_hash
