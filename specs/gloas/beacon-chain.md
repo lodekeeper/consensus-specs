@@ -267,6 +267,8 @@ class ExecutionPayloadBid(Container):
     value: Gwei
     execution_payment: Gwei
     blob_kzg_commitments: List[KZGCommitment, MAX_BLOB_COMMITMENTS_PER_BLOCK]
+    # [New in Gloas:EIP7732]
+    execution_requests_root: Root
 ```
 
 #### `SignedExecutionPayloadBid`
@@ -939,6 +941,12 @@ def process_parent_execution_payload(state: BeaconState, block: BeaconBlock) -> 
 
     if is_parent_full:
         parent_slot = state.latest_block_header.slot
+
+        # Verify execution requests match the bid commitment
+        assert (
+            hash_tree_root(block.body.parent_execution_requests)
+            == parent_bid.execution_requests_root
+        )
 
         # Process deferred execution requests from parent's payload
         # Note: state.slot is the current block's slot, not the parent's.
@@ -1615,10 +1623,11 @@ def verify_execution_payload_envelope_signature(
 
 #### New `process_execution_payload`
 
-*Note*: `process_execution_payload` is a pure verification function called by
+*Note*: `process_execution_payload` is a verification function called by
 fork-choice when importing a signed execution payload. It verifies the payload
-against the execution engine and returns the `ExecutionRequests` without
-mutating `state`. Actual state mutations are deferred to
+against the execution engine and verifies the payload
+against the execution engine without processing execution requests or updating
+state. Actual state mutations are deferred to
 `process_parent_execution_payload` in the next block.
 
 ```python
@@ -1627,7 +1636,7 @@ def process_execution_payload(
     signed_envelope: SignedExecutionPayloadEnvelope,
     execution_engine: ExecutionEngine,
     verify: bool = True,
-) -> ExecutionRequests:
+) -> None:
     envelope = signed_envelope.message
     payload = envelope.payload
 
@@ -1637,18 +1646,11 @@ def process_execution_payload(
 
     # Cache latest block header state root
     previous_state_root = hash_tree_root(state)
-    latest_block_header = state.latest_block_header
-    if latest_block_header.state_root == Root():
-        latest_block_header = BeaconBlockHeader(
-            slot=latest_block_header.slot,
-            proposer_index=latest_block_header.proposer_index,
-            parent_root=latest_block_header.parent_root,
-            state_root=previous_state_root,
-            body_root=latest_block_header.body_root,
-        )
+    if state.latest_block_header.state_root == Root():
+        state.latest_block_header.state_root = previous_state_root
 
     # Verify consistency with the beacon block
-    assert envelope.beacon_block_root == hash_tree_root(latest_block_header)
+    assert envelope.beacon_block_root == hash_tree_root(state.latest_block_header)
     assert envelope.slot == state.slot
 
     # Verify consistency with the committed bid
@@ -1677,10 +1679,8 @@ def process_execution_payload(
         NewPayloadRequest(
             execution_payload=payload,
             versioned_hashes=versioned_hashes,
-            parent_beacon_block_root=latest_block_header.parent_root,
+            parent_beacon_block_root=state.latest_block_header.parent_root,
             execution_requests=requests,
         )
     )
-
-    return requests
 ```
