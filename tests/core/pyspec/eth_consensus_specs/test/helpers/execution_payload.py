@@ -86,6 +86,7 @@ def get_execution_payload_bid(spec, state, execution_payload):
         parent_block_hash=execution_payload.parent_hash,
         parent_block_root=parent_block_root,
         block_hash=execution_payload.block_hash,
+        prev_randao=execution_payload.prev_randao,
         fee_recipient=execution_payload.fee_recipient,
         gas_limit=execution_payload.gas_limit,
         builder_index=builder_index,

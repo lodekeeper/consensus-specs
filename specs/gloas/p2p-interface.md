@@ -278,18 +278,23 @@ regards to the `ExecutionPayload` are removed:
     `block.body.execution_payload`).
 
 And instead the following validations are set in place with the alias
-`bid = signed_execution_payload_bid.message`:
+`bid = signed_execution_payload_bid.message`, and let `parent_bid` be the
+signed execution payload bid committed in the block with root
+`block.parent_root`:
 
 - _[REJECT]_ The length of KZG commitments is less than or equal to the
   limitation defined in the consensus layer -- i.e. validate that
   `len(bid.blob_kzg_commitments) <= get_blob_parameters(get_current_epoch(state)).max_blobs_per_block`
-- _[IGNORE]_ The block's parent execution payload (defined by
-  `bid.parent_block_hash`) has been seen (via gossip or non-gossip sources) (a
-  client MAY queue blocks for processing once the parent payload is retrieved).
-- If `execution_payload` verification of block's execution payload parent by an
-  execution node **is complete**:
-  - [REJECT] The block's execution payload parent (defined by
-    `bid.parent_block_hash`) passes all validation.
+- _[REJECT]_ `bid.parent_block_hash` equals either `parent_bid.block_hash` or
+  `parent_bid.parent_block_hash`.
+- _[IGNORE]_ If `bid.parent_block_hash == parent_bid.block_hash`, the parent
+  execution payload has passed local `on_execution_payload` validation. If not,
+  a client MAY queue the block until the parent payload is validated.
+- If `bid.parent_block_hash == parent_bid.block_hash`:
+  - [REJECT] `hash_tree_root(block.body.parent_execution_requests) ==
+    parent_bid.execution_requests_root`.
+- If `bid.parent_block_hash == parent_bid.parent_block_hash`:
+  - [REJECT] `block.body.parent_execution_requests == ExecutionRequests()`.
 - [REJECT] The bid's parent (defined by `bid.parent_block_root`) equals the
   block's parent (defined by `block.parent_root`).
 
@@ -303,11 +308,11 @@ The following validations MUST pass before forwarding the
 `envelope = signed_execution_payload_envelope.message`,
 `payload = envelope.payload`:
 
-- _[IGNORE]_ The envelope's block root `envelope.block_root` has been seen (via
-  gossip or non-gossip sources) (a client MAY queue payload for processing once
-  the block is retrieved).
+- _[IGNORE]_ The envelope's beacon block root `envelope.beacon_block_root` has
+  been seen (via gossip or non-gossip sources) (a client MAY queue payload for
+  processing once the block is retrieved).
 - _[IGNORE]_ The node has not seen another valid
-  `SignedExecutionPayloadEnvelope` for this block root from this builder.
+  `SignedExecutionPayloadEnvelope` for this beacon block root from this builder.
 - _[IGNORE]_ The envelope is from a slot greater than or equal to the latest
   finalized slot -- i.e. validate that
   `envelope.slot >= compute_start_slot_at_epoch(store.finalized_checkpoint.epoch)`
@@ -322,6 +327,9 @@ obtained from the `state.latest_execution_payload_bid`)
 - _[REJECT]_ `payload.block_hash == bid.block_hash`
 - _[REJECT]_ `signed_execution_payload_envelope.signature` is valid as verified
   by `verify_execution_payload_envelope_signature`.
+
+*Note*: A payload is considered locally present only after `on_execution_payload`
+accepts the envelope for `envelope.beacon_block_root`.
 
 ###### `payload_attestation_message`
 
@@ -346,6 +354,11 @@ The following validations MUST pass before forwarding the
   processing the block up to the current slot as determined by the fork choice.
 - _[REJECT]_ `payload_attestation_message.signature` is valid with respect to
   the validator's public key.
+
+*Note*: `data.payload_present = True` means the sender locally accepted the
+execution payload for `data.beacon_block_root` via `on_execution_payload`.
+Likewise, `data.blob_data_available = True` means the sender both accepted the
+payload locally and determined the corresponding blob data were available.
 
 ###### `execution_payload_bid`
 

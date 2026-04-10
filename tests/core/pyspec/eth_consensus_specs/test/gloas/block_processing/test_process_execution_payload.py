@@ -4,10 +4,6 @@ from eth_consensus_specs.test.context import (
     spec_state_test,
     with_gloas_and_later,
 )
-from eth_consensus_specs.test.helpers.deposits import (
-    make_withdrawal_credentials,
-    prepare_deposit_request,
-)
 from eth_consensus_specs.test.helpers.execution_payload import (
     build_empty_execution_payload,
 )
@@ -30,6 +26,7 @@ def run_execution_payload_processing(
     yield "execution", {"execution_valid": execution_valid}
 
     called_new_payload = False
+    pre_state_root = state.hash_tree_root()
 
     class TestEngine(spec.NoopExecutionEngine):
         def verify_and_notify_new_payload(self, new_payload_request) -> bool:
@@ -47,13 +44,16 @@ def run_execution_payload_processing(
         yield "post", None
         return
 
-    # Use full verification including state root
-    spec.process_execution_payload(state, signed_envelope, TestEngine(), verify=True)
+    verified_requests = spec.process_execution_payload(state, signed_envelope, TestEngine(), verify=True)
 
     # Make sure we called the engine
     assert called_new_payload
+    # Payload processing is verification-only under the deferred model
+    assert state.hash_tree_root() == pre_state_root
+    assert verified_requests == signed_envelope.message.execution_requests
 
     yield "post", state
+    return verified_requests
 
 
 def prepare_execution_payload_envelope(
@@ -62,7 +62,6 @@ def prepare_execution_payload_envelope(
     builder_index=None,
     slot=None,
     beacon_block_root=None,
-    state_root=None,
     execution_payload=None,
     execution_requests=None,
     valid_signature=True,
@@ -97,49 +96,12 @@ def prepare_execution_payload_envelope(
             ](),
         )
 
-    # Create a copy of state for computing state_root after execution payload processing
-    if state_root is None:
-        post_state = state.copy()
-        # Simulate the state changes that process_execution_payload will make
-
-        # Cache latest block header state root if empty (matches process_execution_payload)
-        previous_state_root = post_state.hash_tree_root()
-        if post_state.latest_block_header.state_root == spec.Root():
-            post_state.latest_block_header.state_root = previous_state_root
-
-        # Process execution requests if any
-        if execution_requests is not None:
-            for deposit in execution_requests.deposits:
-                spec.process_deposit_request(post_state, deposit)
-            for withdrawal in execution_requests.withdrawals:
-                spec.process_withdrawal_request(post_state, withdrawal)
-            for consolidation in execution_requests.consolidations:
-                spec.process_consolidation_request(post_state, consolidation)
-
-        # Process builder payment (only if amount > 0)
-        payment = post_state.builder_pending_payments[
-            spec.SLOTS_PER_EPOCH + state.slot % spec.SLOTS_PER_EPOCH
-        ]
-        if payment.withdrawal.amount > 0:
-            post_state.builder_pending_withdrawals.append(payment.withdrawal)
-
-        # Clear the pending payment
-        post_state.builder_pending_payments[
-            spec.SLOTS_PER_EPOCH + state.slot % spec.SLOTS_PER_EPOCH
-        ] = spec.BuilderPendingPayment()
-
-        # Update execution payload availability and latest block hash
-        post_state.execution_payload_availability[state.slot % spec.SLOTS_PER_HISTORICAL_ROOT] = 0b1
-        post_state.latest_block_hash = execution_payload.block_hash
-        state_root = post_state.hash_tree_root()
-
     envelope = spec.ExecutionPayloadEnvelope(
         payload=execution_payload,
         execution_requests=execution_requests,
         builder_index=builder_index,
         beacon_block_root=beacon_block_root,
         slot=slot,
-        state_root=state_root,
     )
 
     if valid_signature:
@@ -192,7 +154,9 @@ def setup_state_with_payload_bid(
         builder_index=builder_index,
         slot=state.slot,
         value=value,
+        execution_payment=spec.Gwei(0),
         blob_kzg_commitments=blob_kzg_commitments,
+        execution_requests_root=spec.hash_tree_root(spec.ExecutionRequests()),
     )
     state.latest_execution_payload_bid = bid
 
@@ -226,18 +190,15 @@ def setup_state_with_payload_bid(
 @always_bls
 def test_process_execution_payload_valid(spec, state):
     """
-    Test valid execution payload processing with separate builder and non-zero payment
+    Test valid execution payload verification with a non-zero builder payment.
     """
     builder_index = 0
-
     setup_state_with_payload_bid(spec, state, builder_index, spec.Gwei(50000000))
 
-    # Create execution payload that matches the committed bid
     execution_payload = build_empty_execution_payload(spec, state)
     execution_payload.block_hash = state.latest_execution_payload_bid.block_hash
     execution_payload.gas_limit = state.latest_execution_payload_bid.gas_limit
     execution_payload.parent_hash = state.latest_block_hash
-
     signed_envelope = prepare_execution_payload_envelope(
         spec, state, builder_index=builder_index, execution_payload=execution_payload
     )
@@ -246,29 +207,24 @@ def test_process_execution_payload_valid(spec, state):
         spec.SLOTS_PER_EPOCH + state.slot % spec.SLOTS_PER_EPOCH
     ]
     pre_pending_withdrawals_len = len(state.builder_pending_withdrawals)
+    pre_latest_block_hash = state.latest_block_hash
+    pre_availability = state.execution_payload_availability[state.slot % spec.SLOTS_PER_HISTORICAL_ROOT]
 
-    yield from run_execution_payload_processing(spec, state, signed_envelope)
+    verified_requests = yield from run_execution_payload_processing(spec, state, signed_envelope)
 
-    # Verify state updates
-    assert state.execution_payload_availability[state.slot % spec.SLOTS_PER_HISTORICAL_ROOT] == 0b1
-    assert state.latest_block_hash == execution_payload.block_hash
-
-    # Verify pending withdrawal was added
-    assert len(state.builder_pending_withdrawals) == pre_pending_withdrawals_len + 1
-    new_withdrawal = state.builder_pending_withdrawals[len(state.builder_pending_withdrawals) - 1]
-    assert new_withdrawal.amount == pre_payment.withdrawal.amount
-    assert new_withdrawal.builder_index == builder_index
-    assert new_withdrawal.fee_recipient == pre_payment.withdrawal.fee_recipient
-
-    # Verify pending payment was cleared
-    cleared_payment = state.builder_pending_payments[
-        spec.SLOTS_PER_EPOCH + state.slot % spec.SLOTS_PER_EPOCH
-    ]
-    # Check if it's been cleared by checking that it equals an empty BuilderPendingPayment
-    empty_payment = spec.BuilderPendingPayment()
-    assert cleared_payment.weight == empty_payment.weight
-    assert cleared_payment.withdrawal.amount == empty_payment.withdrawal.amount
-    assert cleared_payment.withdrawal.builder_index == empty_payment.withdrawal.builder_index
+    assert verified_requests == spec.ExecutionRequests()
+    assert state.latest_block_hash == pre_latest_block_hash
+    assert (
+        state.execution_payload_availability[state.slot % spec.SLOTS_PER_HISTORICAL_ROOT]
+        == pre_availability
+    )
+    assert len(state.builder_pending_withdrawals) == pre_pending_withdrawals_len
+    assert (
+        state.builder_pending_payments[
+            spec.SLOTS_PER_EPOCH + state.slot % spec.SLOTS_PER_EPOCH
+        ]
+        == pre_payment
+    )
 
 
 @with_gloas_and_later
@@ -276,16 +232,14 @@ def test_process_execution_payload_valid(spec, state):
 @always_bls
 def test_process_execution_payload_self_build_zero_value(spec, state):
     """
-    Test valid self-building scenario (zero value)
+    Test valid self-build payload verification.
     """
-    # Setup state with committed bid (self-build, zero value)
     setup_state_with_payload_bid(spec, state, spec.BUILDER_INDEX_SELF_BUILD, spec.Gwei(0))
 
     execution_payload = build_empty_execution_payload(spec, state)
     execution_payload.block_hash = state.latest_execution_payload_bid.block_hash
     execution_payload.gas_limit = state.latest_execution_payload_bid.gas_limit
     execution_payload.parent_hash = state.latest_block_hash
-
     signed_envelope = prepare_execution_payload_envelope(
         spec,
         state,
@@ -293,26 +247,14 @@ def test_process_execution_payload_self_build_zero_value(spec, state):
         execution_payload=execution_payload,
     )
 
-    # Capture pre-state for verification
     pre_pending_withdrawals_len = len(state.builder_pending_withdrawals)
+    pre_latest_block_hash = state.latest_block_hash
 
-    yield from run_execution_payload_processing(spec, state, signed_envelope)
+    verified_requests = yield from run_execution_payload_processing(spec, state, signed_envelope)
 
-    # Verify state updates
-    assert state.execution_payload_availability[state.slot % spec.SLOTS_PER_HISTORICAL_ROOT] == 0b1
-    assert state.latest_block_hash == execution_payload.block_hash
-
-    # In self-build with zero value, no withdrawal is added since amount is zero
+    assert verified_requests == spec.ExecutionRequests()
     assert len(state.builder_pending_withdrawals) == pre_pending_withdrawals_len
-
-    # Verify pending payment remains cleared (it was already empty)
-    cleared_payment = state.builder_pending_payments[
-        spec.SLOTS_PER_EPOCH + state.slot % spec.SLOTS_PER_EPOCH
-    ]
-    empty_payment = spec.BuilderPendingPayment()
-    assert cleared_payment.weight == empty_payment.weight
-    assert cleared_payment.withdrawal.amount == empty_payment.withdrawal.amount
-    assert cleared_payment.withdrawal.builder_index == empty_payment.withdrawal.builder_index
+    assert state.latest_block_hash == pre_latest_block_hash
 
 
 @with_gloas_and_later
@@ -320,11 +262,9 @@ def test_process_execution_payload_self_build_zero_value(spec, state):
 @always_bls
 def test_process_execution_payload_large_payment_churn_impact(spec, state):
     """
-    Test execution payload processing with large payment that impacts exit churn state
+    Test that large pending builder payments remain deferred until the child block.
     """
     builder_index = 0
-
-    # Use a very large payment (500 ETH) to ensure it impacts churn tracking
     large_payment_amount = spec.Gwei(500000000000)
     setup_state_with_payload_bid(spec, state, builder_index, large_payment_amount)
 
@@ -332,7 +272,6 @@ def test_process_execution_payload_large_payment_churn_impact(spec, state):
     execution_payload.block_hash = state.latest_execution_payload_bid.block_hash
     execution_payload.gas_limit = state.latest_execution_payload_bid.gas_limit
     execution_payload.parent_hash = state.latest_block_hash
-
     signed_envelope = prepare_execution_payload_envelope(
         spec,
         state,
@@ -340,7 +279,6 @@ def test_process_execution_payload_large_payment_churn_impact(spec, state):
         execution_payload=execution_payload,
     )
 
-    # Capture pre-state for churn verification
     pre_payment = state.builder_pending_payments[
         spec.SLOTS_PER_EPOCH + state.slot % spec.SLOTS_PER_EPOCH
     ]
@@ -348,21 +286,13 @@ def test_process_execution_payload_large_payment_churn_impact(spec, state):
 
     yield from run_execution_payload_processing(spec, state, signed_envelope)
 
-    # Verify builder payment was processed correctly
-    assert len(state.builder_pending_withdrawals) == pre_pending_withdrawals_len + 1
-    new_withdrawal = state.builder_pending_withdrawals[pre_pending_withdrawals_len]
-    assert new_withdrawal.amount == pre_payment.withdrawal.amount
-    assert new_withdrawal.builder_index == builder_index
-    assert new_withdrawal.fee_recipient == pre_payment.withdrawal.fee_recipient
-
-    # Verify pending payment was cleared
-    cleared_payment = state.builder_pending_payments[
-        spec.SLOTS_PER_EPOCH + state.slot % spec.SLOTS_PER_EPOCH
-    ]
-    empty_payment = spec.BuilderPendingPayment()
-    assert cleared_payment.weight == empty_payment.weight
-    assert cleared_payment.withdrawal.amount == empty_payment.withdrawal.amount
-    assert cleared_payment.withdrawal.builder_index == empty_payment.withdrawal.builder_index
+    assert len(state.builder_pending_withdrawals) == pre_pending_withdrawals_len
+    assert (
+        state.builder_pending_payments[
+            spec.SLOTS_PER_EPOCH + state.slot % spec.SLOTS_PER_EPOCH
+        ]
+        == pre_payment
+    )
 
 
 @with_gloas_and_later
@@ -370,11 +300,9 @@ def test_process_execution_payload_large_payment_churn_impact(spec, state):
 @always_bls
 def test_process_execution_payload_with_blob_commitments(spec, state):
     """
-    Test execution payload processing with blob KZG commitments and separate builder
+    Test execution payload verification with blob KZG commitments.
     """
     builder_index = 0
-
-    # Create bid with blob commitments
     setup_state_with_payload_bid(
         spec,
         state,
@@ -387,7 +315,6 @@ def test_process_execution_payload_with_blob_commitments(spec, state):
     execution_payload.block_hash = state.latest_execution_payload_bid.block_hash
     execution_payload.gas_limit = state.latest_execution_payload_bid.gas_limit
     execution_payload.parent_hash = state.latest_block_hash
-
     signed_envelope = prepare_execution_payload_envelope(
         spec,
         state,
@@ -395,30 +322,8 @@ def test_process_execution_payload_with_blob_commitments(spec, state):
         execution_payload=execution_payload,
     )
 
-    # Capture pre-state for payment verification
-    pre_payment = state.builder_pending_payments[
-        spec.SLOTS_PER_EPOCH + state.slot % spec.SLOTS_PER_EPOCH
-    ]
-    pre_pending_withdrawals_len = len(state.builder_pending_withdrawals)
-
-    yield from run_execution_payload_processing(spec, state, signed_envelope)
-
-    # Verify builder payment was processed correctly
-    # 1. Verify pending withdrawal was added with correct amount and withdrawable epoch
-    assert len(state.builder_pending_withdrawals) == pre_pending_withdrawals_len + 1
-    new_withdrawal = state.builder_pending_withdrawals[pre_pending_withdrawals_len]
-    assert new_withdrawal.amount == pre_payment.withdrawal.amount
-    assert new_withdrawal.builder_index == builder_index
-    assert new_withdrawal.fee_recipient == pre_payment.withdrawal.fee_recipient
-
-    # Verify pending payment was cleared
-    cleared_payment = state.builder_pending_payments[
-        spec.SLOTS_PER_EPOCH + state.slot % spec.SLOTS_PER_EPOCH
-    ]
-    empty_payment = spec.BuilderPendingPayment()
-    assert cleared_payment.weight == empty_payment.weight
-    assert cleared_payment.withdrawal.amount == empty_payment.withdrawal.amount
-    assert cleared_payment.withdrawal.builder_index == empty_payment.withdrawal.builder_index
+    verified_requests = yield from run_execution_payload_processing(spec, state, signed_envelope)
+    assert verified_requests == spec.ExecutionRequests()
 
 
 @with_gloas_and_later
@@ -426,20 +331,18 @@ def test_process_execution_payload_with_blob_commitments(spec, state):
 @always_bls
 def test_process_execution_payload_with_execution_requests(spec, state):
     """
-    Test execution payload processing with execution requests and separate builder
+    Test execution payload verification returns execution requests without mutating CL state.
     """
     builder_index = 0
-
     setup_state_with_payload_bid(spec, state, builder_index, spec.Gwei(4000000))
 
-    # Create execution requests
     execution_requests = spec.ExecutionRequests(
         deposits=spec.List[spec.DepositRequest, spec.MAX_DEPOSIT_REQUESTS_PER_PAYLOAD](
             [
                 spec.DepositRequest(
                     pubkey=spec.BLSPubkey(b"\x01" * 48),
                     withdrawal_credentials=spec.Bytes32(b"\x02" * 32),
-                    amount=spec.Gwei(32000000000),  # 32 ETH
+                    amount=spec.Gwei(32000000000),
                     signature=spec.BLSSignature(b"\x03" * 96),
                     index=spec.uint64(0),
                 )
@@ -450,7 +353,7 @@ def test_process_execution_payload_with_execution_requests(spec, state):
                 spec.WithdrawalRequest(
                     source_address=spec.ExecutionAddress(b"\x04" * 20),
                     validator_pubkey=spec.BLSPubkey(b"\x05" * 48),
-                    amount=spec.Gwei(16000000000),  # 16 ETH
+                    amount=spec.Gwei(16000000000),
                 )
             ]
         ),
@@ -471,105 +374,6 @@ def test_process_execution_payload_with_execution_requests(spec, state):
     execution_payload.block_hash = state.latest_execution_payload_bid.block_hash
     execution_payload.gas_limit = state.latest_execution_payload_bid.gas_limit
     execution_payload.parent_hash = state.latest_block_hash
-
-    signed_envelope = prepare_execution_payload_envelope(
-        spec,
-        state,
-        builder_index=builder_index,
-        execution_payload=execution_payload,
-        execution_requests=execution_requests,
-    )
-
-    # Capture pre-state for verification
-    pre_pending_deposits_len = len(state.pending_deposits)
-    pre_payment = state.builder_pending_payments[
-        spec.SLOTS_PER_EPOCH + state.slot % spec.SLOTS_PER_EPOCH
-    ]
-    pre_pending_withdrawals_len = len(state.builder_pending_withdrawals)
-
-    yield from run_execution_payload_processing(spec, state, signed_envelope)
-
-    # Verify deposit request was processed - deposits are always added to pending queue
-    deposit_request = execution_requests.deposits[0]
-    assert len(state.pending_deposits) == pre_pending_deposits_len + 1
-    new_pending_deposit = state.pending_deposits[pre_pending_deposits_len]
-    assert new_pending_deposit.pubkey == deposit_request.pubkey
-    assert new_pending_deposit.withdrawal_credentials == deposit_request.withdrawal_credentials
-    assert new_pending_deposit.amount == deposit_request.amount
-
-    # Verify builder payment was processed correctly
-    assert len(state.builder_pending_withdrawals) == pre_pending_withdrawals_len + 1
-    new_withdrawal = state.builder_pending_withdrawals[pre_pending_withdrawals_len]
-    assert new_withdrawal.amount == pre_payment.withdrawal.amount
-    assert new_withdrawal.builder_index == builder_index
-    assert new_withdrawal.fee_recipient == pre_payment.withdrawal.fee_recipient
-
-    # Verify pending payment was cleared
-    cleared_payment = state.builder_pending_payments[
-        spec.SLOTS_PER_EPOCH + state.slot % spec.SLOTS_PER_EPOCH
-    ]
-    empty_payment = spec.BuilderPendingPayment()
-    assert cleared_payment.weight == empty_payment.weight
-    assert cleared_payment.withdrawal.amount == empty_payment.withdrawal.amount
-    assert cleared_payment.withdrawal.builder_index == empty_payment.withdrawal.builder_index
-
-
-@with_gloas_and_later
-@spec_state_test
-@always_bls
-def test_process_execution_payload_with_builder_deposit_after_pending_validator(spec, state):
-    """
-    Test that a builder deposit cannot claim a pubkey that is already a pending validator earlier in the same envelope
-    """
-    builder_index = 0
-    setup_state_with_payload_bid(spec, state, builder_index, spec.Gwei(0))
-
-    # Use a fresh pubkey that is neither a validator nor a builder
-    new_validator_index = len(state.validators)
-    amount = spec.MIN_DEPOSIT_AMOUNT
-
-    # First deposit: regular validator credentials with valid signature.
-    # Since no validator/builder/pending deposit exists for this pubkey, it is queued as a pending validator.
-    deposit_request_1 = prepare_deposit_request(
-        spec,
-        new_validator_index,
-        amount,
-        index=0,
-        withdrawal_credentials=make_withdrawal_credentials(
-            spec, spec.ETH1_ADDRESS_WITHDRAWAL_PREFIX, b"\xab"
-        ),
-        signed=True,
-    )
-
-    # Second deposit: builder credentials for the same pubkey.
-    # `is_pending_validator` must see the first deposit (just queued) and route this one to the pending queue
-    # instead of the builder registry, preventing a builder from claiming a pubkey already in the validator queue.
-    deposit_request_2 = prepare_deposit_request(
-        spec,
-        new_validator_index,
-        amount,
-        index=1,
-        withdrawal_credentials=make_withdrawal_credentials(
-            spec, spec.BUILDER_WITHDRAWAL_PREFIX, b"\x59"
-        ),
-        signed=True,
-    )
-
-    execution_requests = spec.ExecutionRequests(
-        deposits=spec.List[spec.DepositRequest, spec.MAX_DEPOSIT_REQUESTS_PER_PAYLOAD](
-            [deposit_request_1, deposit_request_2]
-        ),
-        withdrawals=spec.List[spec.WithdrawalRequest, spec.MAX_WITHDRAWAL_REQUESTS_PER_PAYLOAD](),
-        consolidations=spec.List[
-            spec.ConsolidationRequest, spec.MAX_CONSOLIDATION_REQUESTS_PER_PAYLOAD
-        ](),
-    )
-
-    execution_payload = build_empty_execution_payload(spec, state)
-    execution_payload.block_hash = state.latest_execution_payload_bid.block_hash
-    execution_payload.gas_limit = state.latest_execution_payload_bid.gas_limit
-    execution_payload.parent_hash = state.latest_block_hash
-
     signed_envelope = prepare_execution_payload_envelope(
         spec,
         state,
@@ -581,19 +385,11 @@ def test_process_execution_payload_with_builder_deposit_after_pending_validator(
     pre_pending_deposits_len = len(state.pending_deposits)
     pre_builder_count = len(state.builders)
 
-    yield from run_execution_payload_processing(spec, state, signed_envelope)
+    verified_requests = yield from run_execution_payload_processing(spec, state, signed_envelope)
 
-    # Both deposits must end up in the pending queue, with no new builder created
-    assert len(state.pending_deposits) == pre_pending_deposits_len + 2
+    assert verified_requests == execution_requests
+    assert len(state.pending_deposits) == pre_pending_deposits_len
     assert len(state.builders) == pre_builder_count
-    first = state.pending_deposits[pre_pending_deposits_len]
-    second = state.pending_deposits[pre_pending_deposits_len + 1]
-    assert first.pubkey == deposit_request_1.pubkey
-    assert first.withdrawal_credentials == deposit_request_1.withdrawal_credentials
-    assert first.amount == deposit_request_1.amount
-    assert second.pubkey == deposit_request_2.pubkey
-    assert second.withdrawal_credentials == deposit_request_2.withdrawal_credentials
-    assert second.amount == deposit_request_2.amount
 
 
 #

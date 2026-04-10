@@ -28,6 +28,7 @@ from eth_consensus_specs.test.helpers.fork_choice import (
     get_anchor_root,
     get_formatted_head_output,
     get_genesis_forkchoice_store_and_block,
+    mark_block_payload_available,
     on_tick_and_append_step,
     output_head_check,
     tick_and_add_block,
@@ -114,11 +115,13 @@ def test_chain_no_attestations(spec, state):
     block_1 = build_empty_block_for_next_slot(spec, state)
     signed_block_1 = state_transition_and_sign_block(spec, state, block_1)
     yield from tick_and_add_block(spec, store, signed_block_1, test_steps)
+    mark_block_payload_available(spec, store, signed_block_1)
 
     # On receiving a block of next epoch
     block_2 = build_empty_block_for_next_slot(spec, state)
     signed_block_2 = state_transition_and_sign_block(spec, state, block_2)
     yield from tick_and_add_block(spec, store, signed_block_2, test_steps)
+    mark_block_payload_available(spec, store, signed_block_2)
     check_head_against_root(spec, store, spec.hash_tree_root(block_2))
     output_head_check(spec, store, test_steps)
 
@@ -184,6 +187,7 @@ def test_shorter_chain_but_heavier_weight(spec, state):
         long_block = build_empty_block_for_next_slot(spec, long_state)
         signed_long_block = state_transition_and_sign_block(spec, long_state, long_block)
         yield from tick_and_add_block(spec, store, signed_long_block, test_steps)
+        mark_block_payload_available(spec, store, signed_long_block)
 
     # build short tree
     short_state = genesis_state.copy()
@@ -191,6 +195,7 @@ def test_shorter_chain_but_heavier_weight(spec, state):
     short_block.body.graffiti = b"\x42" * 32
     signed_short_block = state_transition_and_sign_block(spec, short_state, short_block)
     yield from tick_and_add_block(spec, store, signed_short_block, test_steps)
+    mark_block_payload_available(spec, store, signed_short_block)
 
     # Since the long chain has higher proposer_score at slot 1, the latest long block is the head
     check_head_against_root(spec, store, spec.hash_tree_root(long_block))
@@ -229,6 +234,7 @@ def test_filtered_block_tree(spec, state):
     on_tick_and_append_step(spec, store, current_time, test_steps)
     for signed_block in signed_blocks:
         yield from add_block(spec, store, signed_block, test_steps)
+        mark_block_payload_available(spec, store, signed_block)
 
     assert store.justified_checkpoint == state.current_justified_checkpoint
 
@@ -274,6 +280,7 @@ def test_filtered_block_tree(spec, state):
 
     # include rogue block and associated attestations in the store
     yield from add_block(spec, store, signed_rogue_block, test_steps)
+    mark_block_payload_available(spec, store, signed_rogue_block)
 
     for attestation in attestations:
         yield from tick_and_run_on_attestation(spec, store, attestation, test_steps)
@@ -454,6 +461,9 @@ def test_discard_equivocations_slashed_validator_censoring(spec, state):
         anchor_block.body.signed_execution_payload_bid.message.block_hash = (
             anchor_state.latest_block_hash
         )
+        anchor_block.body.signed_execution_payload_bid.message.execution_requests_root = (
+            spec.hash_tree_root(spec.ExecutionRequests())
+        )
     yield "anchor_state", anchor_state
     yield "anchor_block", anchor_block
 
@@ -550,7 +560,13 @@ def test_voting_source_within_two_epoch(spec, state):
     # Fill epoch 1 to 3
     for _ in range(3):
         state, store, _ = yield from apply_next_epoch_with_attestations(
-            spec, state, store, True, True, test_steps=test_steps
+            spec,
+            state,
+            store,
+            True,
+            True,
+            test_steps=test_steps,
+            mark_payload_available=True,
         )
 
     assert spec.compute_epoch_at_slot(spec.get_current_slot(store)) == 4
@@ -562,7 +578,13 @@ def test_voting_source_within_two_epoch(spec, state):
 
     # Fill epoch 4
     state, store, _ = yield from apply_next_epoch_with_attestations(
-        spec, state, store, True, True, test_steps=test_steps
+        spec,
+        state,
+        store,
+        True,
+        True,
+        test_steps=test_steps,
+        mark_payload_available=True,
     )
 
     assert spec.compute_epoch_at_slot(spec.get_current_slot(store)) == 5
@@ -581,6 +603,7 @@ def test_voting_source_within_two_epoch(spec, state):
     # Now add the fork to the store
     for signed_block in signed_blocks:
         yield from tick_and_add_block(spec, store, signed_block, test_steps)
+        mark_block_payload_available(spec, store, signed_block)
     assert spec.compute_epoch_at_slot(spec.get_current_slot(store)) == 5
     assert state.current_justified_checkpoint.epoch == store.justified_checkpoint.epoch == 4
     assert store.finalized_checkpoint.epoch == 3

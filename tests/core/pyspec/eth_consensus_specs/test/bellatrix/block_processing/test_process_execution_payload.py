@@ -38,13 +38,22 @@ def run_execution_payload_processing(
     # Before Deneb, only `body.execution_payload` matters. `BeaconBlockBody` is just a wrapper.
     # After Gloas the execution payload is no longer in the body
     if is_post_gloas(spec):
+        latest_block_header = state.latest_block_header
+        if latest_block_header.state_root == spec.Root():
+            latest_block_header = spec.BeaconBlockHeader(
+                slot=latest_block_header.slot,
+                proposer_index=latest_block_header.proposer_index,
+                parent_root=latest_block_header.parent_root,
+                state_root=state.hash_tree_root(),
+                body_root=latest_block_header.body_root,
+            )
         envelope = spec.ExecutionPayloadEnvelope(
             payload=execution_payload,
-            beacon_block_root=state.latest_block_header.hash_tree_root(),
+            execution_requests=spec.ExecutionRequests(),
+            builder_index=state.latest_execution_payload_bid.builder_index,
+            beacon_block_root=latest_block_header.hash_tree_root(),
+            slot=state.slot,
         )
-        post_state = state.copy()
-        post_state.latest_block_hash = execution_payload.block_hash
-        envelope.state_root = post_state.hash_tree_root()
         if envelope.builder_index == spec.BUILDER_INDEX_SELF_BUILD:
             privkey = privkeys[state.latest_block_header.proposer_index]
         else:
@@ -65,6 +74,7 @@ def run_execution_payload_processing(
 
     yield "pre", state
     yield "execution", {"execution_valid": execution_valid}
+    pre_state_root = state.hash_tree_root()
 
     called_new_block = False
 
@@ -97,7 +107,7 @@ def run_execution_payload_processing(
     yield "post", state
 
     if is_post_gloas(spec):
-        assert state.latest_block_hash == execution_payload.block_hash
+        assert state.hash_tree_root() == pre_state_root
     else:
         assert state.latest_execution_payload_header == get_execution_payload_header(
             spec, state, body.execution_payload

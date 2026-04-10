@@ -228,8 +228,8 @@ parent's execution payload. The proposer constructs this field as follows:
 - If the parent block is pre-Gloas (first Gloas block), set
   `parent_execution_requests` to an empty `ExecutionRequests()`.
 - If the parent block was FULL (i.e., the execution payload was delivered and
-  verified), set `parent_execution_requests` to the `ExecutionRequests` from
-  the parent's `ExecutionPayloadEnvelope`.
+  locally verified), set `parent_execution_requests` to the `ExecutionRequests`
+  from the locally accepted parent payload.
 - If the parent block was EMPTY (i.e., no execution payload was delivered), set
   `parent_execution_requests` to an empty `ExecutionRequests()`.
 
@@ -267,6 +267,11 @@ def prepare_execution_payload(
     )
 ```
 
+*Note*: Under deferred payload processing, `state.latest_block_hash` is the
+hash of the most recent FULL execution payload on the canonical chain. If the
+parent beacon block is EMPTY, `head_block_hash` therefore stays at the last
+FULL ancestor rather than advancing to the parent beacon block.
+
 ### Payload timeliness attestation
 
 Some validators are selected to submit payload timeliness attestations.
@@ -293,8 +298,8 @@ The validator creates `payload_attestation_message` as follows:
 - Set `data.beacon_block_root` be the hash tree root of the beacon block seen
   for the assigned slot.
 - Set `data.slot` to be the assigned slot.
-- If a previously seen `SignedExecutionPayloadEnvelope` references the block
-  with root `data.beacon_block_root`, set `data.payload_present` to `True`;
+- If the execution payload for `data.beacon_block_root` has passed local
+  `on_execution_payload` validation, set `data.payload_present` to `True`;
   otherwise, set `data.payload_present` to `False`.
 - Set `payload_attestation_message.validator_index = validator_index` where
   `validator_index` is the validator chosen to submit. The private key mapping
