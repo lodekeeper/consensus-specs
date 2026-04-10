@@ -725,8 +725,9 @@ def get_payload_attestation_due_ms(epoch: Epoch) -> uint64:
 
 ### Modified `on_block`
 
-*Note*: The handler `on_block` is modified to verify the deferred execution
-requests from the parent payload against fork-choice-level payload verification.
+*Note*: The handler `on_block` is modified to verify the parent's deferred
+execution requests against the parent bid's `execution_requests_root` commitment,
+and to assert that the parent payload has been verified (`store.payloads`).
 In addition we delay the checking of blob data availability until the processing
 of the execution payload.
 
@@ -744,7 +745,7 @@ def on_block(store: Store, signed_block: SignedBeaconBlock) -> None:
     bid = block.body.signed_execution_payload_bid.message
     parent_bid = parent_block.body.signed_execution_payload_bid.message
     # [Modified in Gloas:EIP7732]
-    # Verify parent execution requests match EE-verified data
+    # Verify parent execution requests against the verified payload data
     if is_parent_node_full(store, block):
         assert block.parent_root in store.payloads
         assert (
