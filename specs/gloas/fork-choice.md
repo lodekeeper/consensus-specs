@@ -258,15 +258,9 @@ def is_payload_data_available(store: Store, root: Root) -> bool:
 
 ### New `get_parent_payload_status`
 
-*Note*: The first Gloas block may have a pre-Gloas parent, which does not
-carry `signed_execution_payload_bid`. Such parents are treated as `FULL`
-because their payload was embedded in the beacon block.
-
 ```python
 def get_parent_payload_status(store: Store, block: BeaconBlock) -> PayloadStatus:
     parent = store.blocks[block.parent_root]
-    if not hasattr(parent.body, "signed_execution_payload_bid"):
-        return PAYLOAD_STATUS_FULL
     parent_block_hash = block.body.signed_execution_payload_bid.message.parent_block_hash
     message_block_hash = parent.body.signed_execution_payload_bid.message.block_hash
     return PAYLOAD_STATUS_FULL if parent_block_hash == message_block_hash else PAYLOAD_STATUS_EMPTY
@@ -748,22 +742,18 @@ def on_block(store: Store, signed_block: SignedBeaconBlock) -> None:
     # Check if this blocks builds on empty or full parent block
     parent_block = store.blocks[block.parent_root]
     bid = block.body.signed_execution_payload_bid.message
-    # A pre-Gloas parent has no deferred payload effects to import.
-    if not hasattr(parent_block.body, "signed_execution_payload_bid"):
-        assert block.body.parent_execution_requests == ExecutionRequests()
+    parent_bid = parent_block.body.signed_execution_payload_bid.message
+    # [Modified in Gloas:EIP7732]
+    # Verify parent execution requests match EE-verified data
+    if is_parent_node_full(store, block):
+        assert block.parent_root in store.payloads
+        assert (
+            hash_tree_root(block.body.parent_execution_requests)
+            == parent_bid.execution_requests_root
+        )
     else:
-        parent_bid = parent_block.body.signed_execution_payload_bid.message
-        # [Modified in Gloas:EIP7732]
-        # Verify parent execution requests match EE-verified data
-        if is_parent_node_full(store, block):
-            assert block.parent_root in store.payloads
-            assert (
-                hash_tree_root(block.body.parent_execution_requests)
-                == parent_bid.execution_requests_root
-            )
-        else:
-            assert bid.parent_block_hash == parent_bid.parent_block_hash
-            assert block.body.parent_execution_requests == ExecutionRequests()
+        assert bid.parent_block_hash == parent_bid.parent_block_hash
+        assert block.body.parent_execution_requests == ExecutionRequests()
 
     # [Modified in Gloas:EIP7732]
     state = copy(store.block_states[block.parent_root])
