@@ -123,7 +123,7 @@ def update_latest_messages(
 ### Modified `Store`
 
 *Note*: `Store` is modified to track blocks whose execution payloads have been
-processed.
+verified.
 
 ```python
 @dataclass
