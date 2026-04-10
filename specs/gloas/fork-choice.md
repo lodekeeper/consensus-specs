@@ -258,11 +258,14 @@ def is_payload_data_available(store: Store, root: Root) -> bool:
 
 ### New `get_parent_payload_status`
 
+*Note*: The first Gloas block may have a pre-Gloas parent, which does not
+carry `signed_execution_payload_bid`. Such parents are treated as `FULL`
+because their payload was embedded in the beacon block.
+
 ```python
 def get_parent_payload_status(store: Store, block: BeaconBlock) -> PayloadStatus:
     parent = store.blocks[block.parent_root]
-    # Pre-Gloas parents always had their payload embedded in the block
-    if compute_epoch_at_slot(parent.slot) < GLOAS_FORK_EPOCH:
+    if not hasattr(parent.body, "signed_execution_payload_bid"):
         return PAYLOAD_STATUS_FULL
     parent_block_hash = block.body.signed_execution_payload_bid.message.parent_block_hash
     message_block_hash = parent.body.signed_execution_payload_bid.message.block_hash
@@ -745,8 +748,8 @@ def on_block(store: Store, signed_block: SignedBeaconBlock) -> None:
     # Check if this blocks builds on empty or full parent block
     parent_block = store.blocks[block.parent_root]
     bid = block.body.signed_execution_payload_bid.message
-    # First Gloas block: parent is pre-Gloas, no deferred payload processing
-    if compute_epoch_at_slot(parent_block.slot) < GLOAS_FORK_EPOCH:
+    # A pre-Gloas parent has no deferred payload effects to import.
+    if not hasattr(parent_block.body, "signed_execution_payload_bid"):
         assert block.body.parent_execution_requests == ExecutionRequests()
     else:
         parent_bid = parent_block.body.signed_execution_payload_bid.message
