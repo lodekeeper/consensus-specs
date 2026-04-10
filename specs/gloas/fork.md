@@ -118,8 +118,8 @@ If `state.slot % SLOTS_PER_EPOCH == 0` and
 `compute_epoch_at_slot(state.slot) == GLOAS_FORK_EPOCH`, an irregular state
 change is made to upgrade to Gloas.
 
-*Note*: `latest_execution_payload_bid.execution_requests_root` is initialized
-to `hash_tree_root(ExecutionRequests())` so the first Gloas block treats its
+*Note*: `latest_execution_payload_bid.execution_requests_root` is initialized to
+`hash_tree_root(ExecutionRequests())` so the first Gloas block treats its
 pre-Gloas parent as having empty deferred execution requests.
 
 ```python

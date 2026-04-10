@@ -48,7 +48,10 @@ def mark_block_payload_available(spec, store, block_or_root):
         vote = store.payload_timeliness_vote[block_root]
         for i in range(len(vote)):
             vote[i] = True
-    if hasattr(store, "payload_data_availability_vote") and block_root in store.payload_data_availability_vote:
+    if (
+        hasattr(store, "payload_data_availability_vote")
+        and block_root in store.payload_data_availability_vote
+    ):
         vote = store.payload_data_availability_vote[block_root]
         for i in range(len(vote)):
             vote[i] = True
@@ -589,7 +592,15 @@ def apply_next_epoch_with_attestations(
 
 
 def apply_next_slots_with_attestations(
-    spec, state, store, slots, fill_cur_epoch, fill_prev_epoch, test_steps, participation_fn=None, mark_payload_available=False
+    spec,
+    state,
+    store,
+    slots,
+    fill_cur_epoch,
+    fill_prev_epoch,
+    test_steps,
+    participation_fn=None,
+    mark_payload_available=False,
 ):
     _, new_signed_blocks, post_state = next_slots_with_attestations(
         spec, state, slots, fill_cur_epoch, fill_prev_epoch, participation_fn=participation_fn

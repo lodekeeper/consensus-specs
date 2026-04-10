@@ -1631,8 +1631,8 @@ def verify_execution_payload_envelope_signature(
 *Note*: `process_execution_payload` is a verification function called by
 fork-choice when importing a signed execution payload. It verifies the payload
 against the execution engine without processing execution requests or updating
-state. Actual state mutations are deferred to
-`process_parent_execution_payload` in the next block.
+state. Actual state mutations are deferred to `process_parent_execution_payload`
+in the next block.
 
 ```python
 def process_execution_payload(
