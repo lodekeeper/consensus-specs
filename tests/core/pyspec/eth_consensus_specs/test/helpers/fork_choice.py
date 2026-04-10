@@ -589,7 +589,7 @@ def apply_next_epoch_with_attestations(
 
 
 def apply_next_slots_with_attestations(
-    spec, state, store, slots, fill_cur_epoch, fill_prev_epoch, test_steps, participation_fn=None
+    spec, state, store, slots, fill_cur_epoch, fill_prev_epoch, test_steps, participation_fn=None, mark_payload_available=False
 ):
     _, new_signed_blocks, post_state = next_slots_with_attestations(
         spec, state, slots, fill_cur_epoch, fill_prev_epoch, participation_fn=participation_fn
