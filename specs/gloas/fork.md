@@ -118,6 +118,10 @@ If `state.slot % SLOTS_PER_EPOCH == 0` and
 `compute_epoch_at_slot(state.slot) == GLOAS_FORK_EPOCH`, an irregular state
 change is made to upgrade to Gloas.
 
+*Note*: `latest_execution_payload_bid.execution_requests_root` is initialized
+to `hash_tree_root(ExecutionRequests())` so the first Gloas block treats its
+pre-Gloas parent as having empty deferred execution requests.
+
 ```python
 def upgrade_to_gloas(pre: fulu.BeaconState) -> BeaconState:
     epoch = fulu.get_current_epoch(pre)
@@ -157,6 +161,7 @@ def upgrade_to_gloas(pre: fulu.BeaconState) -> BeaconState:
         # [New in Gloas:EIP7732]
         latest_execution_payload_bid=ExecutionPayloadBid(
             block_hash=pre.latest_execution_payload_header.block_hash,
+            execution_requests_root=hash_tree_root(ExecutionRequests()),
         ),
         next_withdrawal_index=pre.next_withdrawal_index,
         next_withdrawal_validator_index=pre.next_withdrawal_validator_index,

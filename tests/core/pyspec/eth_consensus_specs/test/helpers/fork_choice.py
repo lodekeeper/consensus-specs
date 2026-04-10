@@ -22,6 +22,40 @@ def check_head_against_root(spec, store, root):
         assert head == root
 
 
+def mark_block_payload_available(spec, store, block_or_root):
+    """Mark a locally built post-Gloas block as having a locally available payload."""
+    if not is_post_gloas(spec):
+        return
+
+    if hasattr(block_or_root, "message"):
+        block_root = block_or_root.message.hash_tree_root()
+    elif hasattr(block_or_root, "hash_tree_root"):
+        block_root = block_or_root.hash_tree_root()
+    else:
+        block_root = block_or_root
+
+    assert block_root in store.blocks
+    if hasattr(store, "execution_payloads"):
+        store.execution_payloads.add(block_root)
+    elif hasattr(store, "payloads"):
+        if hasattr(store.payloads, "add"):
+            store.payloads.add(block_root)
+        else:
+            store.payloads[block_root] = store.block_states[block_root]
+    else:
+        raise AssertionError("Store has neither execution_payloads nor payloads")
+    if hasattr(store, "payload_timeliness_vote") and block_root in store.payload_timeliness_vote:
+        vote = store.payload_timeliness_vote[block_root]
+        for i in range(len(vote)):
+            vote[i] = True
+    if hasattr(store, "payload_data_availability_vote") and block_root in store.payload_data_availability_vote:
+        vote = store.payload_data_availability_vote[block_root]
+        for i in range(len(vote)):
+            vote[i] = True
+    if hasattr(store, "payload_inclusion_list_satisfaction"):
+        store.payload_inclusion_list_satisfaction[block_root] = True
+
+
 class BlobData(NamedTuple):
     """
     The return values of blob/sidecar retrieval helpers.
@@ -255,6 +289,9 @@ def get_genesis_forkchoice_store_and_block(spec, genesis_state):
         genesis_block.body.signed_execution_payload_bid.message.block_hash = (
             genesis_state.latest_block_hash
         )
+        genesis_block.body.signed_execution_payload_bid.message.execution_requests_root = (
+            spec.hash_tree_root(spec.ExecutionRequests())
+        )
     store = spec.get_forkchoice_store(genesis_state, genesis_block)
     return store, genesis_block
 
@@ -405,9 +442,14 @@ def run_on_execution_payload(spec, store, signed_envelope, valid=True):
 
     spec.on_execution_payload(store, signed_envelope)
 
-    # Verify the envelope was processed, block should now have FULL state
+    # Verify the envelope was processed and the block is now FULL locally
     envelope_root = signed_envelope.message.beacon_block_root
-    assert envelope_root in store.payloads
+    if hasattr(store, "execution_payloads"):
+        assert envelope_root in store.execution_payloads
+    elif hasattr(store, "payloads"):
+        assert envelope_root in store.payloads
+    else:
+        raise AssertionError("Store has neither execution_payloads nor payloads")
 
 
 def get_execution_payload_envelope_file_name(signed_envelope):
@@ -517,7 +559,14 @@ def output_store_checks(spec, store, test_steps, with_viable_for_head_weights=Fa
 
 
 def apply_next_epoch_with_attestations(
-    spec, state, store, fill_cur_epoch, fill_prev_epoch, participation_fn=None, test_steps=None
+    spec,
+    state,
+    store,
+    fill_cur_epoch,
+    fill_prev_epoch,
+    participation_fn=None,
+    test_steps=None,
+    mark_payload_available=False,
 ):
     if test_steps is None:
         test_steps = []
@@ -528,6 +577,8 @@ def apply_next_epoch_with_attestations(
     for signed_block in new_signed_blocks:
         block = signed_block.message
         yield from tick_and_add_block(spec, store, signed_block, test_steps)
+        if mark_payload_available:
+            mark_block_payload_available(spec, store, signed_block)
         block_root = block.hash_tree_root()
         assert store.blocks[block_root] == block
         last_signed_block = signed_block
@@ -546,6 +597,8 @@ def apply_next_slots_with_attestations(
     for signed_block in new_signed_blocks:
         block = signed_block.message
         yield from tick_and_add_block(spec, store, signed_block, test_steps)
+        if mark_payload_available:
+            mark_block_payload_available(spec, store, signed_block)
         block_root = block.hash_tree_root()
         assert store.blocks[block_root] == block
         last_signed_block = signed_block

@@ -149,6 +149,11 @@ def create_genesis_state(spec, validator_balances, activation_threshold):
         current_version = get_fork_version(spec, spec.fork)
 
     genesis_block_body = spec.BeaconBlockBody()
+    if is_post_gloas(spec):
+        empty_execution_requests_root = spec.hash_tree_root(spec.ExecutionRequests())
+        genesis_block_body.signed_execution_payload_bid.message.execution_requests_root = (
+            empty_execution_requests_root
+        )
 
     state = spec.BeaconState(
         genesis_time=0,
@@ -197,8 +202,8 @@ def create_genesis_state(spec, validator_balances, activation_threshold):
         state.next_sync_committee = spec.get_next_sync_committee(state)
 
     if is_post_gloas(spec):
-        # Initialize the latest_execution_payload_bid
-        genesis_block_body.signed_execution_payload_bid.message.block_hash = eth1_block_hash
+        # Initialize the latest_execution_payload_bid commitment for the genesis parent.
+        state.latest_execution_payload_bid.execution_requests_root = empty_execution_requests_root
     elif is_post_bellatrix(spec):
         # Initialize the execution payload header (with block number and genesis time set to 0)
         state.latest_execution_payload_header = get_sample_genesis_execution_payload_header(

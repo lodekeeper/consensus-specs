@@ -62,6 +62,7 @@ def _setup_parent_payload_state(
         parent_block_hash=state.latest_block_hash,
         parent_block_root=state.latest_block_header.hash_tree_root(),
         block_hash=_make_hash(spec, 0x22),
+        execution_requests_root=spec.hash_tree_root(spec.ExecutionRequests()),
         prev_randao=spec.get_randao_mix(state, spec.get_current_epoch(state)),
         fee_recipient=spec.ExecutionAddress(b"\xaa" * 20),
         gas_limit=spec.uint64(60_000_000),
@@ -102,6 +103,10 @@ def _build_block_for_parent_processing(
 ):
     if parent_execution_requests is None:
         parent_execution_requests = spec.ExecutionRequests()
+    if parent_full:
+        execution_requests_root = spec.hash_tree_root(parent_execution_requests)
+        state.latest_execution_payload_bid.execution_requests_root = execution_requests_root
+        parent_bid.execution_requests_root = execution_requests_root
 
     child_bid = spec.ExecutionPayloadBid(
         parent_block_hash=(parent_bid.block_hash if parent_full else parent_bid.parent_block_hash),
