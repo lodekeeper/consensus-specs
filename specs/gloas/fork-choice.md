@@ -753,9 +753,7 @@ def on_block(store: Store, signed_block: SignedBeaconBlock) -> None:
         # Verify parent execution requests match EE-verified data
         if is_parent_node_full(store, block):
             assert block.parent_root in store.execution_payloads
-            assert block.body.parent_execution_requests == store.execution_payloads[
-                block.parent_root
-            ]
+            assert hash_tree_root(block.body.parent_execution_requests) == parent_bid.execution_requests_root
         else:
             assert bid.parent_block_hash == parent_bid.parent_block_hash
             assert block.body.parent_execution_requests == ExecutionRequests()
