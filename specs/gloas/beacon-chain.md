@@ -808,9 +808,9 @@ payload envelope `signed_envelope` is verified by
 returns the verified `ExecutionRequests` without mutating `state`. Execution
 requests are deferred to the next beacon block via
 `process_parent_execution_payload`. State transitions that trigger an unhandled
-exception (e.g. a failed `assert` or an out-of-range list access) are
-considered invalid. State transitions that cause an `uint64` overflow or
-underflow are also considered invalid.
+exception (e.g. a failed `assert` or an out-of-range list access) are considered
+invalid. State transitions that cause an `uint64` overflow or underflow are also
+considered invalid.
 
 ### Modified `process_slot`
 
@@ -926,11 +926,6 @@ def process_parent_execution_payload(state: BeaconState, block: BeaconBlock) -> 
     ``state.latest_block_header.slot`` and ``state.latest_execution_payload_bid``
     which are overwritten by ``process_block_header`` and ``process_execution_payload_bid``.
     """
-    # No deferred processing for the first Gloas block (parent is pre-Gloas)
-    if compute_epoch_at_slot(state.latest_block_header.slot) < GLOAS_FORK_EPOCH:
-        assert block.body.parent_execution_requests == ExecutionRequests()
-        return
-
     bid = block.body.signed_execution_payload_bid.message
     parent_bid = state.latest_execution_payload_bid
 
@@ -1625,10 +1620,9 @@ def verify_execution_payload_envelope_signature(
 
 *Note*: `process_execution_payload` is a verification function called by
 fork-choice when importing a signed execution payload. It verifies the payload
-against the execution engine and verifies the payload
-against the execution engine without processing execution requests or updating
-state. Actual state mutations are deferred to
-`process_parent_execution_payload` in the next block.
+against the execution engine and verifies the payload against the execution
+engine without processing execution requests or updating state. Actual state
+mutations are deferred to `process_parent_execution_payload` in the next block.
 
 ```python
 def process_execution_payload(
