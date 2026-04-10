@@ -45,25 +45,10 @@ def run_execution_payload_processing(
         # Ensure bid fields match payload for assertions to pass
         state.latest_execution_payload_bid.gas_limit = execution_payload.gas_limit
         state.latest_execution_payload_bid.block_hash = execution_payload.block_hash
-        post_state = state.copy()
-        previous_state_root = state.hash_tree_root()
-        if post_state.latest_block_header.state_root == spec.Root():
-            post_state.latest_block_header.state_root = previous_state_root
-        envelope.beacon_block_root = post_state.latest_block_header.hash_tree_root()
-
-        payment = post_state.builder_pending_payments[
-            spec.SLOTS_PER_EPOCH + state.slot % spec.SLOTS_PER_EPOCH
-        ]
-        amount = payment.withdrawal.amount
-        if amount > 0:
-            post_state.builder_pending_withdrawals.append(payment.withdrawal)
-        post_state.builder_pending_payments[
-            spec.SLOTS_PER_EPOCH + state.slot % spec.SLOTS_PER_EPOCH
-        ] = spec.BuilderPendingPayment()
-
-        post_state.execution_payload_availability[state.slot % spec.SLOTS_PER_HISTORICAL_ROOT] = 0b1
-        post_state.latest_block_hash = execution_payload.block_hash
-        envelope.state_root = post_state.hash_tree_root()
+        # Fill state_root in header if empty for beacon_block_root computation
+        if state.latest_block_header.state_root == spec.Root():
+            state.latest_block_header.state_root = state.hash_tree_root()
+        envelope.beacon_block_root = state.latest_block_header.hash_tree_root()
         if envelope.builder_index == spec.BUILDER_INDEX_SELF_BUILD:
             privkey = privkeys[state.latest_block_header.proposer_index]
         else:
@@ -118,12 +103,7 @@ def run_execution_payload_processing(
 
     yield "post", state
 
-    if is_post_gloas(spec):
-        assert (
-            state.execution_payload_availability[state.slot % spec.SLOTS_PER_HISTORICAL_ROOT] == 0b1
-        )
-        assert state.latest_block_hash == execution_payload.block_hash
-    else:
+    if not is_post_gloas(spec):
         assert state.latest_execution_payload_header == get_execution_payload_header(
             spec, state, execution_payload
         )

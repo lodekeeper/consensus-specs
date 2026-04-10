@@ -128,11 +128,11 @@ class Store(object):
     checkpoint_states: Dict[Checkpoint, BeaconState] = field(default_factory=dict)
     latest_messages: Dict[ValidatorIndex, LatestMessage] = field(default_factory=dict)
     unrealized_justifications: Dict[Root, Checkpoint] = field(default_factory=dict)
+    payloads: Set[Root] = field(default_factory=set)
     payload_timeliness_vote: Dict[Root, Vector[boolean, PTC_SIZE]] = field(default_factory=dict)
     payload_data_availability_vote: Dict[Root, Vector[boolean, PTC_SIZE]] = field(
         default_factory=dict
     )
-    execution_payloads: Set[Root] = field(default_factory=set)
     # [New in Heze:EIP7805]
     payload_inclusion_list_satisfaction: Dict[Root, boolean] = field(default_factory=dict)
 ```
@@ -161,7 +161,7 @@ def get_forkchoice_store(anchor_state: BeaconState, anchor_block: BeaconBlock) -
         block_timeliness={anchor_root: [True, True]},
         checkpoint_states={justified_checkpoint: copy(anchor_state)},
         unrealized_justifications={anchor_root: justified_checkpoint},
-        execution_payloads={anchor_root},
+        payloads={anchor_root},
         payload_timeliness_vote={
             anchor_root: Vector[boolean, PTC_SIZE](True for _ in range(PTC_SIZE))
         },
@@ -213,7 +213,7 @@ def is_payload_inclusion_list_satisfied(store: Store, root: Root) -> bool:
 
     # If the payload is not locally available, the payload
     # is not considered to satisfy the inclusion list constraints
-    if root not in store.execution_payloads:
+    if root not in store.payloads:
         return False
 
     return store.payload_inclusion_list_satisfaction[root]
@@ -316,5 +316,5 @@ def on_execution_payload(store: Store, signed_envelope: SignedExecutionPayloadEn
     )
 
     # Mark this block's execution payload as verified
-    store.execution_payloads.add(envelope.beacon_block_root)
+    store.payloads.add(envelope.beacon_block_root)
 ```

@@ -38,13 +38,13 @@ def run_execution_payload_processing(
     # Before Deneb, only `body.execution_payload` matters. `BeaconBlockBody` is just a wrapper.
     # After Gloas the execution payload is no longer in the body
     if is_post_gloas(spec):
+        # Fill state_root in header if empty for beacon_block_root computation
+        if state.latest_block_header.state_root == spec.Root():
+            state.latest_block_header.state_root = state.hash_tree_root()
         envelope = spec.ExecutionPayloadEnvelope(
             payload=execution_payload,
             beacon_block_root=state.latest_block_header.hash_tree_root(),
         )
-        post_state = state.copy()
-        post_state.latest_block_hash = execution_payload.block_hash
-        envelope.state_root = post_state.hash_tree_root()
         if envelope.builder_index == spec.BUILDER_INDEX_SELF_BUILD:
             privkey = privkeys[state.latest_block_header.proposer_index]
         else:
@@ -96,9 +96,7 @@ def run_execution_payload_processing(
 
     yield "post", state
 
-    if is_post_gloas(spec):
-        assert state.latest_block_hash == execution_payload.block_hash
-    else:
+    if not is_post_gloas(spec):
         assert state.latest_execution_payload_header == get_execution_payload_header(
             spec, state, body.execution_payload
         )
