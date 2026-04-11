@@ -740,18 +740,19 @@ def on_block(store: Store, signed_block: SignedBeaconBlock) -> None:
     # Parent block must be known
     assert block.parent_root in store.block_states
 
-    # Check if this blocks builds on empty or full parent block
+    # Verify deferred execution payload processing from parent block
     parent_block = store.blocks[block.parent_root]
     bid = block.body.signed_execution_payload_bid.message
     parent_bid = parent_block.body.signed_execution_payload_bid.message
-    # Verify parent execution requests against the parent bid commitment
     if is_parent_node_full(store, block):
+        # Parent payload was delivered: verify execution requests match the bid commitment
         assert block.parent_root in store.payloads
         assert (
             hash_tree_root(block.body.parent_execution_requests)
             == parent_bid.execution_requests_root
         )
     else:
+        # Parent payload was not delivered: verify block hash continuity and empty requests
         assert bid.parent_block_hash == parent_bid.parent_block_hash
         assert block.body.parent_execution_requests == ExecutionRequests()
 

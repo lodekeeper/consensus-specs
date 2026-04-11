@@ -1646,7 +1646,6 @@ def process_execution_payload(
         assert verify_execution_payload_envelope_signature(state, signed_envelope)
 
     # Verify consistency with the beacon block
-    assert envelope.beacon_block_root == hash_tree_root(state.latest_block_header)
     assert envelope.slot == state.slot
 
     # Verify consistency with the committed bid
