@@ -728,8 +728,8 @@ def get_payload_attestation_due_ms(epoch: Epoch) -> uint64:
 *Note*: The handler `on_block` is modified to verify the parent's deferred
 execution requests against the parent bid's `execution_requests_root`
 commitment, and to assert that the parent payload has been verified
-(`store.payloads`). In addition we delay the checking of blob data availability
-until the processing of the execution payload.
+(`store.payloads`). In addition, blob data availability checking is deferred to
+the processing of the execution payload.
 
 ```python
 def on_block(store: Store, signed_block: SignedBeaconBlock) -> None:
@@ -740,7 +740,7 @@ def on_block(store: Store, signed_block: SignedBeaconBlock) -> None:
     # Parent block must be known
     assert block.parent_root in store.block_states
 
-    # Verify deferred execution payload processing from parent block
+    # Verify parent's deferred execution requests
     parent_block = store.blocks[block.parent_root]
     bid = block.body.signed_execution_payload_bid.message
     parent_bid = parent_block.body.signed_execution_payload_bid.message
@@ -752,7 +752,7 @@ def on_block(store: Store, signed_block: SignedBeaconBlock) -> None:
         )
     else:
         assert bid.parent_block_hash == parent_bid.parent_block_hash
-        # No deferred execution requests when parent payload was not delivered
+        # Parent payload was not delivered -- no deferred execution requests
         assert block.body.parent_execution_requests == ExecutionRequests()
 
     # Blocks cannot be in the future. If they are, their consideration must be delayed until they are in the past.
