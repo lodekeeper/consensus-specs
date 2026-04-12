@@ -255,6 +255,9 @@ def get_genesis_forkchoice_store_and_block(spec, genesis_state):
         genesis_block.body.signed_execution_payload_bid.message.block_hash = (
             genesis_state.latest_block_hash
         )
+        genesis_block.body.signed_execution_payload_bid.message.execution_requests_root = (
+            spec.hash_tree_root(spec.ExecutionRequests())
+        )
     store = spec.get_forkchoice_store(genesis_state, genesis_block)
     return store, genesis_block
 
@@ -407,7 +410,7 @@ def run_on_execution_payload(spec, store, signed_envelope, valid=True):
 
     # Verify the envelope was processed, block should now have FULL state
     envelope_root = signed_envelope.message.beacon_block_root
-    assert envelope_root in store.payload_states
+    assert envelope_root in store.payloads
 
 
 def get_execution_payload_envelope_file_name(signed_envelope):

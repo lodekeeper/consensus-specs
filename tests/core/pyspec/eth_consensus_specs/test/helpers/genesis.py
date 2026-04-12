@@ -197,8 +197,21 @@ def create_genesis_state(spec, validator_balances, activation_threshold):
         state.next_sync_committee = spec.get_next_sync_committee(state)
 
     if is_post_gloas(spec):
-        # Initialize the latest_execution_payload_bid
+        # Initialize the genesis block body bid and state bid (mirrors gloas/fork.md)
         genesis_block_body.signed_execution_payload_bid.message.block_hash = eth1_block_hash
+        genesis_block_body.signed_execution_payload_bid.message.execution_requests_root = (
+            spec.hash_tree_root(spec.ExecutionRequests())
+        )
+        state.latest_execution_payload_bid = spec.ExecutionPayloadBid(
+            block_hash=eth1_block_hash,
+            execution_requests_root=spec.hash_tree_root(spec.ExecutionRequests()),
+        )
+        state.latest_block_hash = eth1_block_hash
+        # Recompute body_root after modifying genesis_block_body so that
+        # latest_block_header matches the genesis block used by the fork choice store
+        state.latest_block_header = spec.BeaconBlockHeader(
+            body_root=spec.hash_tree_root(genesis_block_body),
+        )
     elif is_post_bellatrix(spec):
         # Initialize the execution payload header (with block number and genesis time set to 0)
         state.latest_execution_payload_header = get_sample_genesis_execution_payload_header(

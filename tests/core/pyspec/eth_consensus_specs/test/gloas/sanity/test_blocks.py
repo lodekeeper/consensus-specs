@@ -95,7 +95,6 @@ def _attempt_payload_with_withdrawals(spec, state, withdrawals):
         builder_index=committed_bid.builder_index,
         beacon_block_root=test_state.latest_block_header.hash_tree_root(),
         slot=test_state.slot,
-        state_root=spec.Root(),
     )
 
     signed_envelope = spec.SignedExecutionPayloadEnvelope(
