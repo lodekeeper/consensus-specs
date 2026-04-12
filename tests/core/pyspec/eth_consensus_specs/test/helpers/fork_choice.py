@@ -252,11 +252,13 @@ def get_genesis_forkchoice_store_and_block(spec, genesis_state):
     assert genesis_state.slot == spec.GENESIS_SLOT
     genesis_block = spec.BeaconBlock(state_root=genesis_state.hash_tree_root())
     if is_post_gloas(spec):
+        # Use bid.block_hash (not latest_block_hash) to match genesis body_root.
+        # Genesis payload is EMPTY: latest_block_hash=0 != bid.block_hash.
         genesis_block.body.signed_execution_payload_bid.message.block_hash = (
-            genesis_state.latest_block_hash
+            genesis_state.latest_execution_payload_bid.block_hash
         )
         genesis_block.body.signed_execution_payload_bid.message.execution_requests_root = (
-            spec.hash_tree_root(spec.ExecutionRequests())
+            genesis_state.latest_execution_payload_bid.execution_requests_root
         )
     store = spec.get_forkchoice_store(genesis_state, genesis_block)
     return store, genesis_block
