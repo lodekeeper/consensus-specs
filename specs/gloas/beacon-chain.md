@@ -1048,6 +1048,7 @@ def apply_parent_execution_payload(
     # consistency with the EL state at `state.latest_block_hash` while still
     # reserving the committed value from intermediate spendability.
     apply_withdrawals(state, state.payload_expected_withdrawals)
+    state.payload_expected_withdrawals = []
 
     # Process execution requests from parent's payload. The execution
     # requests are processed at state.slot (child's slot), not the parent's slot.
