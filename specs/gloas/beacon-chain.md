@@ -940,10 +940,11 @@ def process_block(state: BeaconState, block: BeaconBlock) -> None:
 
 ##### New `apply_parent_execution_payload`
 
-*Note*: This function processes the parent's execution requests, queues the
-builder payment, updates payload availability, and updates the latest block
-hash. It is called by `process_parent_execution_payload` during block processing
-and by the validator during block production before computing withdrawals.
+*Note*: This function applies the withdrawals committed by the parent's payload,
+processes the parent's execution requests, queues the builder payment, updates
+payload availability, and updates the latest block hash. It is called by
+`process_parent_execution_payload` during block processing and by the validator
+during block production before computing withdrawals.
 
 ```python
 def apply_parent_execution_payload(
@@ -953,6 +954,14 @@ def apply_parent_execution_payload(
 ) -> None:
     parent_slot = parent_bid.slot
     parent_epoch = compute_epoch_at_slot(parent_slot)
+
+    # [New in Gloas:EIP7732]
+    # Apply withdrawals committed by the parent's payload. These were computed
+    # at the parent's slot and cached in `state.payload_expected_withdrawals`;
+    # deducting them here (rather than at the parent's slot) ensures that
+    # `state.balances` stays consistent with the EL state at
+    # `state.latest_block_hash` until the parent's payload is known to be FULL.
+    apply_withdrawals(state, state.payload_expected_withdrawals)
 
     # Process execution requests from parent's payload. The execution
     # requests are processed at state.slot (child's slot), not the parent's slot.
@@ -1183,9 +1192,14 @@ def update_next_withdrawal_builder_index(
 *Note*: This is modified to only take the `state` as parameter. Withdrawals are
 deterministic given the beacon state, any execution payload that has the
 corresponding block as parent beacon block is required to honor these
-withdrawals in the execution layer. `process_withdrawals` must be called after
+withdrawals in the execution layer. `process_withdrawals` computes the expected
+withdrawals for the current block's payload and caches them in
+`state.payload_expected_withdrawals`; the actual CL-side balance deduction is
+deferred to `apply_parent_execution_payload` at the child's slot, so that
+`state.balances` remains consistent with the EL state at
+`state.latest_block_hash`. `process_withdrawals` must be called after
 `process_parent_execution_payload` (which updates `state.latest_block_hash`) and
-before `process_execution_payload_bid` as the latter function affects validator
+before `process_execution_payload_bid` as the latter function affects builder
 balances.
 
 ```python
@@ -1202,8 +1216,9 @@ def process_withdrawals(
     # Get expected withdrawals
     expected = get_expected_withdrawals(state)
 
-    # Apply expected withdrawals
-    apply_withdrawals(state, expected.withdrawals)
+    # [Modified in Gloas:EIP7732]
+    # Note: balance deduction is deferred to `apply_parent_execution_payload`
+    # at the child's slot, once the parent's payload is known to be FULL.
 
     # Update withdrawals fields in the state
     update_next_withdrawal_index(state, expected.withdrawals)
