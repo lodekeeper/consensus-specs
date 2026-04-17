@@ -3,9 +3,10 @@ from eth_consensus_specs.test.context import spec_state_test, with_gloas_and_lat
 
 @with_gloas_and_later
 @spec_state_test
-def test_payload_expected_withdrawals_contribute_to_pending_balance(spec, state):
+def test_reserved_balance_excludes_committed_withdrawals_from_spendability(spec, state):
     validator_index = spec.ValidatorIndex(0)
     amount = spec.Gwei(11)
+    state.balances[validator_index] = spec.Gwei(50)
     state.payload_expected_withdrawals = [
         spec.Withdrawal(
             index=spec.WithdrawalIndex(0),
@@ -16,13 +17,14 @@ def test_payload_expected_withdrawals_contribute_to_pending_balance(spec, state)
     ]
 
     yield "pre", state
-    assert spec.get_pending_balance_to_withdraw(state, validator_index) == amount
+    assert spec.get_reserved_balance_to_withdraw(state, validator_index) == amount
+    assert spec.get_spendable_balance(state, validator_index) == spec.Gwei(50) - amount
     yield "post", state
 
 
 @with_gloas_and_later
 @spec_state_test
-def test_payload_expected_withdrawals_reserve_balance_until_settlement(spec, state):
+def test_decrease_balance_floors_at_reserved_amount(spec, state):
     validator_index = spec.ValidatorIndex(0)
     reserved = spec.Gwei(10)
     state.balances[validator_index] = spec.Gwei(40)
@@ -37,9 +39,14 @@ def test_payload_expected_withdrawals_reserve_balance_until_settlement(spec, sta
 
     yield "pre", state
 
+    # Penalty larger than spendable balance — should floor at reserved
     spec.decrease_balance(state, validator_index, spec.Gwei(35))
-    assert state.balances[validator_index] == reserved
+    assert state.balances[validator_index] == reserved, (
+        f"expected balance to floor at reserved={reserved}, "
+        f"got {state.balances[validator_index]}"
+    )
 
+    # Settlement bypasses the floor and deducts the full reserved amount
     spec.apply_withdrawals(state, state.payload_expected_withdrawals)
     assert state.balances[validator_index] == spec.Gwei(0)
 

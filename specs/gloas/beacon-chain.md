@@ -563,14 +563,6 @@ def get_reserved_balance_to_withdraw(state: BeaconState, validator_index: Valida
     )
 
 
-def get_pending_balance_to_withdraw(state: BeaconState, validator_index: ValidatorIndex) -> Gwei:
-    return sum(
-        withdrawal.amount
-        for withdrawal in state.pending_partial_withdrawals
-        if withdrawal.validator_index == validator_index
-    ) + get_reserved_balance_to_withdraw(state, validator_index)
-
-
 def get_spendable_balance(state: BeaconState, validator_index: ValidatorIndex) -> Gwei:
     return max(
         Gwei(0),
@@ -944,27 +936,6 @@ def process_pending_consolidations(state: BeaconState) -> None:
         next_pending_consolidation += 1
 
     state.pending_consolidations = state.pending_consolidations[next_pending_consolidation:]
-```
-
-#### Modified `process_effective_balance_updates`
-
-```python
-def process_effective_balance_updates(state: BeaconState) -> None:
-    # Update effective balances with hysteresis
-    for index, validator in enumerate(state.validators):
-        balance = get_spendable_balance(state, ValidatorIndex(index))
-        HYSTERESIS_INCREMENT = uint64(EFFECTIVE_BALANCE_INCREMENT // HYSTERESIS_QUOTIENT)
-        DOWNWARD_THRESHOLD = HYSTERESIS_INCREMENT * HYSTERESIS_DOWNWARD_MULTIPLIER
-        UPWARD_THRESHOLD = HYSTERESIS_INCREMENT * HYSTERESIS_UPWARD_MULTIPLIER
-        max_effective_balance = get_max_effective_balance(validator)
-
-        if (
-            balance + DOWNWARD_THRESHOLD < validator.effective_balance
-            or validator.effective_balance + UPWARD_THRESHOLD < balance
-        ):
-            validator.effective_balance = min(
-                balance - balance % EFFECTIVE_BALANCE_INCREMENT, max_effective_balance
-            )
 ```
 
 #### New `process_builder_pending_payments`
