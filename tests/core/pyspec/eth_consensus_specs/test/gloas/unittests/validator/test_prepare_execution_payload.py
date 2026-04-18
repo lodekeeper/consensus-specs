@@ -244,3 +244,47 @@ def test_prepare_execution_payload__payload_attributes(spec, state):
     assert attrs.slot_number == proposal_state.slot
 
     yield "steps", test_steps
+
+
+@with_gloas_and_later
+@spec_state_test
+def test_prepare_execution_payload__block_passes_state_transition(spec, state):
+    """
+    After prepare_execution_payload returns payload attributes for the
+    proposer, a block built at that slot must pass state_transition and the
+    withdrawals state_transition applies must match the ones in
+    payload_attributes.
+    """
+    test_steps = []
+    store, _ = get_genesis_forkchoice_store_and_block(spec, state)
+    yield "anchor_state", state
+    yield "anchor_block", store.blocks[spec.get_head(store).root]
+
+    current_time = state.slot * (spec.config.SLOT_DURATION_MS // 1000) + store.genesis_time
+    on_tick_and_append_step(spec, store, current_time, test_steps)
+
+    proposal_state = _advance_to_proposal_slot(spec, state, store, test_steps)
+
+    engine = CaptureEngine()
+    spec.prepare_execution_payload(
+        store=store,
+        state=proposal_state,
+        safe_block_hash=spec.Hash32(),
+        finalized_block_hash=spec.Hash32(),
+        suggested_fee_recipient=spec.ExecutionAddress(),
+        execution_engine=engine,
+    )
+    prepared_withdrawals = list(engine.payload_attributes.withdrawals)
+
+    # Build the proposed block for the same slot and run state_transition
+    # from the pre-advanced state. state_transition_and_sign_block advances
+    # slots internally, so the block slot must be ahead of the state slot.
+    block = build_empty_block_for_next_slot(spec, state)
+    assert block.slot == proposal_state.slot
+    state_transition_and_sign_block(spec, state, block)
+
+    # Withdrawals tracked by state_transition must match what the proposer
+    # would have put in the execution payload attributes.
+    assert list(state.payload_expected_withdrawals) == prepared_withdrawals
+
+    yield "steps", test_steps
