@@ -251,7 +251,7 @@ def test_epoch_boundary_empty_parent_gap_5_epochs(spec, state):
 @with_gloas_and_later
 @spec_state_test
 @with_presets([MINIMAL], reason="epoch boundary timing requires controlled slots")
-def test_switch_to_compounding_deferred_across_epoch_boundary(spec, state):
+def test_switch_to_compounding_across_epoch_boundary(spec, state):
     """
     A validator with >32 ETH and 0x01 credentials submits a switch-to-compounding
     request in the last payload of an epoch.
