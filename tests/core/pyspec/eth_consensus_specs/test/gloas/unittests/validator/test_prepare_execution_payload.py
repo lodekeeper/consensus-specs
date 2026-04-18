@@ -104,7 +104,7 @@ def test_prepare_execution_payload__extend_payload(spec, state):
 
     assert payload_id == SAMPLE_PAYLOAD_ID
 
-    # Extending payload → execution head is parent_bid.block_hash
+    # Extending payload, execution head is parent_bid.block_hash
     assert engine.head_block_hash == parent_bid.block_hash
 
     # Withdrawals are computed from post-apply state
@@ -122,7 +122,7 @@ def test_prepare_execution_payload__extend_payload(spec, state):
 @spec_state_test
 def test_prepare_execution_payload__no_payload_verified(spec, state):
     """
-    When the parent's payload has NOT been delivered (is_payload_verified
+    When the parent's payload has not been delivered (is_payload_verified
     returns False), prepare_execution_payload should:
     - use parent_bid.parent_block_hash as execution head
     - use cached state.payload_expected_withdrawals
@@ -165,10 +165,10 @@ def test_prepare_execution_payload__no_payload_verified(spec, state):
 
     assert payload_id == SAMPLE_PAYLOAD_ID
 
-    # No payload verified → execution head is parent_bid.parent_block_hash
+    # No payload verified, execution head is parent_bid.parent_block_hash
     assert engine.head_block_hash == parent_bid.parent_block_hash
 
-    # No payload verified → withdrawals are the cached list
+    # No payload verified, withdrawals are the cached list
     assert engine.payload_attributes.withdrawals == proposal_state.payload_expected_withdrawals
 
     yield "steps", test_steps
