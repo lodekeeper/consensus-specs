@@ -135,14 +135,20 @@ def test_prepare_execution_payload__no_payload_verified(spec, state):
     current_time = state.slot * (spec.config.SLOT_DURATION_MS // 1000) + store.genesis_time
     on_tick_and_append_step(spec, store, current_time, test_steps)
 
-    # Add a block but do NOT deliver envelope
+    # Add a block but do not deliver envelope
     block = build_empty_block_for_next_slot(spec, state)
     signed_block = state_transition_and_sign_block(spec, state, block)
     yield from tick_and_add_block(spec, store, signed_block, test_steps)
     block_root = signed_block.message.hash_tree_root()
 
-    # Verify precondition: payload is NOT verified
+    # Verify precondition: payload is not verified
     assert not spec.is_payload_verified(store, block_root)
+
+    # For heze and later: is_payload_inclusion_list_satisfied asserts the
+    # root has been tracked. Normally record_payload_inclusion_list_satisfaction
+    # runs from on_execution_payload_envelope, but here no envelope is delivered.
+    if hasattr(store, "payload_inclusion_list_satisfaction"):
+        store.payload_inclusion_list_satisfaction[block_root] = False
 
     proposal_state = _advance_to_proposal_slot(spec, state, store, test_steps)
 
@@ -210,6 +216,7 @@ def test_prepare_execution_payload__payload_attributes(spec, state):
     - timestamp from compute_time_at_slot
     - prev_randao from get_randao_mix
     - parent_beacon_block_root from state.latest_block_header
+    - slot_number from state.slot (EIP-7843)
     """
     test_steps = []
     store, signed_block, block_root, envelope = yield from _setup_full_parent(
@@ -234,5 +241,6 @@ def test_prepare_execution_payload__payload_attributes(spec, state):
         proposal_state, spec.get_current_epoch(proposal_state)
     )
     assert attrs.parent_beacon_block_root == proposal_state.latest_block_header.hash_tree_root()
+    assert attrs.slot_number == proposal_state.slot
 
     yield "steps", test_steps
