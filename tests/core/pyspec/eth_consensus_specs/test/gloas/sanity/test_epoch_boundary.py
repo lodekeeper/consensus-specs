@@ -107,7 +107,7 @@ def _run_epoch_boundary_full_parent(spec, state, gap_epochs):
     # Simulate payload delivery for Block 1
     set_parent_block_full(spec, state)
 
-    # Validator should NOT have switched yet (processed by next block)
+    # Validator should not have switched yet (processed by next block)
     assert spec.has_eth1_withdrawal_credential(state.validators[validator_index])
 
     # Block 2: after gap_epochs of missed blocks
@@ -134,8 +134,8 @@ def _run_epoch_boundary_full_parent(spec, state, gap_epochs):
 def _run_epoch_boundary_empty_parent(spec, state, gap_epochs):
     """
     Block at last slot of epoch with switch-to-compounding request committed
-    in bid, but payload NOT delivered (empty parent), then ``gap_epochs`` of
-    missed blocks, then a new block. The request should NOT be processed.
+    in bid, but payload not delivered (empty parent), then ``gap_epochs`` of
+    missed blocks, then a new block. The request should not be processed.
     """
     set_parent_block_full(spec, state)
 
@@ -161,8 +161,8 @@ def _run_epoch_boundary_empty_parent(spec, state, gap_epochs):
     )
     signed_block_1 = state_transition_and_sign_block(spec, state, block_1)
 
-    # Do NOT deliver payload, parent stays empty
-    # Validator should NOT have switched
+    # Do not deliver payload, parent stays empty
+    # Validator should not have switched
     assert spec.has_eth1_withdrawal_credential(state.validators[validator_index])
 
     # Block 2: after gap_epochs of missed blocks
@@ -221,7 +221,7 @@ def test_epoch_boundary_full_parent_gap_5_epochs(spec, state):
 def test_epoch_boundary_empty_parent_gap_1_epoch(spec, state):
     """
     Block at last slot of epoch with switch-to-compounding committed in bid.
-    Payload NOT delivered. 1 epoch of missed blocks. Request never processed.
+    Payload not delivered. 1 epoch of missed blocks. Request never processed.
     """
     yield from _run_epoch_boundary_empty_parent(spec, state, gap_epochs=1)
 
@@ -232,7 +232,7 @@ def test_epoch_boundary_empty_parent_gap_1_epoch(spec, state):
 def test_epoch_boundary_empty_parent_gap_2_epochs(spec, state):
     """
     Block at last slot of epoch with switch-to-compounding committed in bid.
-    Payload NOT delivered. 2 epochs of missed blocks. Request never processed.
+    Payload not delivered. 2 epochs of missed blocks. Request never processed.
     """
     yield from _run_epoch_boundary_empty_parent(spec, state, gap_epochs=2)
 
@@ -243,7 +243,7 @@ def test_epoch_boundary_empty_parent_gap_2_epochs(spec, state):
 def test_epoch_boundary_empty_parent_gap_5_epochs(spec, state):
     """
     Block at last slot of epoch with switch-to-compounding committed in bid.
-    Payload NOT delivered. 5 epochs of missed blocks. Request never processed.
+    Payload not delivered. 5 epochs of missed blocks. Request never processed.
     """
     yield from _run_epoch_boundary_empty_parent(spec, state, gap_epochs=5)
 
@@ -257,7 +257,7 @@ def test_switch_to_compounding_across_epoch_boundary(spec, state):
     request in the last payload of an epoch.
 
     The request is processed by the next block, so the epoch transition runs
-    WITHOUT the credential change and the effective balance stays at
+    without the credential change and the effective balance stays at
     MIN_ACTIVATION_BALANCE (not jumping to the higher compounding cap).
     """
     set_parent_block_full(spec, state)
@@ -291,7 +291,7 @@ def test_switch_to_compounding_across_epoch_boundary(spec, state):
     set_parent_block_full(spec, state)
 
     # At this point we're at the last slot of the epoch.
-    # The switch-to-compounding request is committed but NOT yet processed.
+    # The switch-to-compounding request is committed but not yet processed.
     # Credentials must still be 0x01.
     assert spec.has_eth1_withdrawal_credential(state.validators[validator_index])
     # Effective balance must still be capped at MIN_ACTIVATION_BALANCE
@@ -309,7 +309,7 @@ def test_switch_to_compounding_across_epoch_boundary(spec, state):
     # The switch should now have been applied
     assert spec.has_compounding_withdrawal_credential(state.validators[validator_index])
 
-    # The epoch transition (process_effective_balance_updates) ran BEFORE the
+    # The epoch transition (process_effective_balance_updates) ran before the
     # switch was applied, so effective_balance was computed with 0x01 credentials.
     # After the switch, balance was set to MIN_ACTIVATION_BALANCE by
     # queue_excess_active_balance, so effective_balance should remain at
