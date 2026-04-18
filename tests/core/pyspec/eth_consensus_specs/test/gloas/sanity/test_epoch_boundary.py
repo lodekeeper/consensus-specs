@@ -9,7 +9,6 @@ from eth_consensus_specs.test.helpers.consolidations import (
 )
 from eth_consensus_specs.test.helpers.constants import MINIMAL
 from eth_consensus_specs.test.helpers.state import (
-    next_epoch_with_full_participation,
     state_transition_and_sign_block,
 )
 from eth_consensus_specs.test.helpers.withdrawals import (
@@ -82,11 +81,6 @@ def _run_epoch_boundary_full_parent(spec, state, gap_epochs):
     payload delivered (full), then ``gap_epochs`` of missed blocks, then a new
     block that processes the execution requests from the parent payload.
     """
-    # Advance a few epochs to build up state (finalization, etc.)
-    for _ in range(3):
-        next_epoch_with_full_participation(spec, state)
-
-    # Set parent block full so Block 1's process_withdrawals can run
     set_parent_block_full(spec, state)
 
     # Pick a validator and set up for switch-to-compounding
@@ -99,7 +93,6 @@ def _run_epoch_boundary_full_parent(spec, state, gap_epochs):
         consolidations=[consolidation_request],
     )
 
-    # Verify the validator has ETH1 credentials before the switch
     assert spec.has_eth1_withdrawal_credential(state.validators[validator_index])
 
     yield "pre", state
@@ -144,11 +137,6 @@ def _run_epoch_boundary_empty_parent(spec, state, gap_epochs):
     in bid, but payload NOT delivered (empty parent), then ``gap_epochs`` of
     missed blocks, then a new block. The request should NOT be processed.
     """
-    # Advance a few epochs to build up state
-    for _ in range(3):
-        next_epoch_with_full_participation(spec, state)
-
-    # Set parent block full so Block 1's process_withdrawals can run
     set_parent_block_full(spec, state)
 
     # Pick a validator and set up for switch-to-compounding
@@ -272,10 +260,6 @@ def test_switch_to_compounding_deferred_across_epoch_boundary(spec, state):
     WITHOUT the credential change and the effective balance stays at
     MIN_ACTIVATION_BALANCE (not jumping to the higher compounding cap).
     """
-    # Advance to get stable state
-    for _ in range(3):
-        next_epoch_with_full_participation(spec, state)
-
     set_parent_block_full(spec, state)
 
     # Set up validator: 0x01 credentials, balance > MIN_ACTIVATION_BALANCE
