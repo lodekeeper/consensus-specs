@@ -22,8 +22,6 @@ SAMPLE_PAYLOAD_ID = b"\x12" * 8
 
 
 class CaptureEngine:
-    """Mock execution engine that captures the arguments to notify_forkchoice_updated."""
-
     def __init__(self):
         self.head_block_hash = None
         self.payload_attributes = None
@@ -37,7 +35,6 @@ class CaptureEngine:
 
 
 def _setup_full_parent(spec, state):
-    """Add a block and deliver its envelope so is_payload_verified returns True."""
     store, _ = get_genesis_forkchoice_store_and_block(spec, state)
 
     current_time = state.slot * (spec.config.SLOT_DURATION_MS // 1000) + store.genesis_time
@@ -61,7 +58,6 @@ def _setup_full_parent(spec, state):
 
 
 def _advance_to_proposal_slot(spec, state, store):
-    """Advance state and store time to the next proposal slot."""
     proposal_state = state.copy()
     spec.process_slots(proposal_state, proposal_state.slot + 1)
 
@@ -76,14 +72,7 @@ def _advance_to_proposal_slot(spec, state, store):
 @with_gloas_and_later
 @spec_state_test
 def test_prepare_execution_payload__extend_payload(spec, state):
-    """
-    When the parent's payload is verified (is_payload_verified) and
-    should_extend_payload returns True, prepare_execution_payload should:
-    - use parent_bid.block_hash as execution head
-    - compute withdrawals from the post-apply_parent_execution_payload state
-    """
-    store, _signed_block, block_root, envelope = _setup_full_parent(spec, state)
-
+    store, _, block_root, envelope = _setup_full_parent(spec, state)
     assert spec.should_extend_payload(store, block_root)
 
     proposal_state = _advance_to_proposal_slot(spec, state, store)
@@ -113,12 +102,6 @@ def test_prepare_execution_payload__extend_payload(spec, state):
 @with_gloas_and_later
 @spec_state_test
 def test_prepare_execution_payload__no_payload_verified(spec, state):
-    """
-    When the parent's payload has not been delivered (is_payload_verified
-    returns False), prepare_execution_payload should:
-    - use parent_bid.parent_block_hash as execution head
-    - use cached state.payload_expected_withdrawals
-    """
     store, _ = get_genesis_forkchoice_store_and_block(spec, state)
 
     current_time = state.slot * (spec.config.SLOT_DURATION_MS // 1000) + store.genesis_time
@@ -135,9 +118,8 @@ def test_prepare_execution_payload__no_payload_verified(spec, state):
 
     assert not spec.is_payload_verified(store, block_root)
 
-    # For heze and later: is_payload_inclusion_list_satisfied asserts the
-    # root has been tracked. Normally record_payload_inclusion_list_satisfaction
-    # runs from on_execution_payload_envelope, but here no envelope is delivered.
+    # NOTE: record_payload_inclusion_list_satisfaction runs inside
+    # on_execution_payload_envelope, which we skip here.
     if hasattr(store, "payload_inclusion_list_satisfaction"):
         store.payload_inclusion_list_satisfaction[block_root] = False
 
@@ -162,14 +144,9 @@ def test_prepare_execution_payload__no_payload_verified(spec, state):
 @with_gloas_and_later
 @spec_state_test
 def test_prepare_execution_payload__extend_payload_does_not_mutate_state(spec, state):
-    """
-    When extending the parent's payload, prepare_execution_payload must
-    copy the state before applying apply_parent_execution_payload.
-    The original state passed in must remain unchanged.
-    """
-    store, _signed_block, _block_root, _envelope = _setup_full_parent(spec, state)
-
+    store, _, _, _ = _setup_full_parent(spec, state)
     proposal_state = _advance_to_proposal_slot(spec, state, store)
+
     state_root_before = proposal_state.hash_tree_root()
 
     engine = CaptureEngine()
@@ -188,15 +165,7 @@ def test_prepare_execution_payload__extend_payload_does_not_mutate_state(spec, s
 @with_gloas_and_later
 @spec_state_test
 def test_prepare_execution_payload__payload_attributes(spec, state):
-    """
-    Verify payload attributes are correctly derived from the state:
-    - timestamp from compute_time_at_slot
-    - prev_randao from get_randao_mix
-    - parent_beacon_block_root from state.latest_block_header
-    - slot_number from state.slot (EIP-7843)
-    """
-    store, _signed_block, _block_root, _envelope = _setup_full_parent(spec, state)
-
+    store, _, _, _ = _setup_full_parent(spec, state)
     proposal_state = _advance_to_proposal_slot(spec, state, store)
 
     engine = CaptureEngine()
@@ -221,12 +190,6 @@ def test_prepare_execution_payload__payload_attributes(spec, state):
 @with_gloas_and_later
 @spec_state_test
 def test_prepare_execution_payload__block_passes_state_transition(spec, state):
-    """
-    After prepare_execution_payload returns payload attributes for the
-    proposer, a block built at that slot must pass state_transition and the
-    withdrawals state_transition applies must match the ones in
-    payload_attributes.
-    """
     store, _ = get_genesis_forkchoice_store_and_block(spec, state)
 
     current_time = state.slot * (spec.config.SLOT_DURATION_MS // 1000) + store.genesis_time
@@ -245,13 +208,8 @@ def test_prepare_execution_payload__block_passes_state_transition(spec, state):
     )
     prepared_withdrawals = list(engine.payload_attributes.withdrawals)
 
-    # Build the proposed block for the same slot and run state_transition
-    # from the pre-advanced state. state_transition_and_sign_block advances
-    # slots internally, so the block slot must be ahead of the state slot.
     block = build_empty_block_for_next_slot(spec, state)
     assert block.slot == proposal_state.slot
     state_transition_and_sign_block(spec, state, block)
 
-    # Withdrawals tracked by state_transition must match what the proposer
-    # would have put in the execution payload attributes.
     assert list(state.payload_expected_withdrawals) == prepared_withdrawals
