@@ -19,6 +19,7 @@
   - [New `is_payload_inclusion_list_satisfied`](#new-is_payload_inclusion_list_satisfied)
   - [Modified `should_extend_payload`](#modified-should_extend_payload)
   - [New `get_inclusion_list_due_ms`](#new-get_inclusion_list_due_ms)
+  - [Modified `get_checkpoint_block`](#modified-get_checkpoint_block)
 - [Handlers](#handlers)
   - [New `on_inclusion_list`](#new-on_inclusion_list)
   - [Modified `on_execution_payload_envelope`](#modified-on_execution_payload_envelope)
@@ -241,6 +242,27 @@ def should_extend_payload(store: Store, root: Root) -> bool:
 ```python
 def get_inclusion_list_due_ms() -> uint64:
     return get_slot_component_duration_ms(INCLUSION_LIST_DUE_BPS)
+```
+
+### Modified `get_checkpoint_block`
+
+*Note*: `get_checkpoint_block` is modified to resolve the checkpoint to the last
+block of the previous epoch (the epoch boundary) rather than the first block of
+`epoch`, matching the modified FFG target. The genesis epoch, which has no
+previous epoch, resolves to the genesis block.
+
+```python
+def get_checkpoint_block(store: Store, root: Root, epoch: Epoch) -> Root:
+    """
+    Compute the checkpoint block for epoch ``epoch`` in the chain of block ``root``
+    """
+    # [Modified in Heze:EIPXXXX]
+    if epoch == GENESIS_EPOCH:
+        checkpoint_slot = compute_start_slot_at_epoch(GENESIS_EPOCH)
+    else:
+        checkpoint_slot = Slot(compute_start_slot_at_epoch(epoch) - 1)
+    node = ForkChoiceNode(root=root, payload_status=PAYLOAD_STATUS_PENDING)
+    return get_ancestor(store, node, checkpoint_slot).root
 ```
 
 ## Handlers
