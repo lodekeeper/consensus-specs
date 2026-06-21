@@ -38,6 +38,7 @@ from eth_consensus_specs.test.helpers.fork_choice import (
 from eth_consensus_specs.test.helpers.forks import (
     is_post_bellatrix,
     is_post_gloas,
+    is_post_heze,
 )
 from eth_consensus_specs.test.helpers.state import (
     next_epoch,
@@ -1197,6 +1198,12 @@ def test_justified_update_not_realized_finality(spec, state):
     finalized_block = store.blocks[finalized_root]
     assert spec.compute_epoch_at_slot(finalized_block.slot) == 4
     check_head_against_root(spec, store, finalized_root)
+    # [Modified in Heze:EIPXXXX] the finalized checkpoint for epoch 4 anchors to
+    # the epoch boundary block (the last block of the previous epoch), not the
+    # first block of epoch 4 which is the head here.
+    expected_finalized_root = finalized_root
+    if is_post_heze(spec):
+        expected_finalized_root = spec.get_checkpoint_block(store, finalized_root, spec.Epoch(4))
     # Copy the post-state to use later
     another_state = state.copy()
 
@@ -1208,7 +1215,11 @@ def test_justified_update_not_realized_finality(spec, state):
     assert spec.compute_epoch_at_slot(spec.get_current_slot(store)) == 6
     assert state.current_justified_checkpoint.epoch == store.justified_checkpoint.epoch == 5
     assert state.finalized_checkpoint.epoch == store.finalized_checkpoint.epoch == 4
-    assert state.finalized_checkpoint.root == store.finalized_checkpoint.root == finalized_root
+    assert (
+        state.finalized_checkpoint.root
+        == store.finalized_checkpoint.root
+        == expected_finalized_root
+    )
 
     # Create a fork for a better justification that is a descendant of the finalized block,
     # but does not realize the finality.
@@ -1236,8 +1247,15 @@ def test_justified_update_not_realized_finality(spec, state):
     assert store.finalized_checkpoint.epoch == 4
     last_block = signed_blocks[-1]
     last_block_root = last_block.message.hash_tree_root()
+    finalized_slot = finalized_block.slot
+    if is_post_heze(spec):
+        # [Modified in Heze:EIPXXXX] the finalized checkpoint anchors to the
+        # previous epoch's last slot (the epoch boundary)
+        finalized_slot = (
+            spec.compute_start_slot_at_epoch(spec.compute_epoch_at_slot(finalized_block.slot)) - 1
+        )
     ancestor_at_finalized_slot = spec.get_ancestor(
-        store, get_fork_choice_node(spec, last_block_root), finalized_block.slot
+        store, get_fork_choice_node(spec, last_block_root), finalized_slot
     ).root
 
     assert ancestor_at_finalized_slot == store.finalized_checkpoint.root
