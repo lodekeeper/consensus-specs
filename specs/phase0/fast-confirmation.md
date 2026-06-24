@@ -948,14 +948,14 @@ actions:
 
 1. Check if the `fcr_store.confirmed_root` belongs to the canonical chain and is
    not older than the previous epoch.
-2. Check if the confirmed chain starting from the
-   `fcr_store.current_epoch_observed_justified_checkpoint` can be re-confirmed
-   at the start of the current epoch which resets GST to the start of the
-   current epoch.
-3. If any of the above checks fail, set `fcr_store.confirmed_root` to the
-   `store.finalized_checkpoint.root`. Either of the above conditions signify
-   that FCR assumptions (at least synchrony) are broken and the confirmed block
-   might not be safe.
+2. If the check in step 1 fails — the confirmed block is no longer on the
+   canonical chain (an actual reorg) or is older than the previous epoch — set
+   `fcr_store.confirmed_root` to the `store.finalized_checkpoint.root`.
+3. **PROPOSAL (monotonicity guard):** the epoch-boundary `is_confirmed_chain_safe`
+   re-check no longer reverts a confirmed block that is still on the canonical
+   chain, because that re-derivation of `is_one_confirmed` from the current vote
+   view can be transiently stale and spuriously fail. See the note and open
+   question in `get_latest_confirmed`.
 4. Restart the confirmation chain by setting `fcr_store.confirmed_root` to
    `fcr_store.current_epoch_observed_justified_checkpoint.root` if the restart
    conditions are met. Under synchrony, such a checkpoint is for sure now the
@@ -975,17 +975,23 @@ def get_latest_confirmed(fcr_store: FastConfirmationStore) -> Root:
 
     # Revert to finalized block if either of the following is true:
     # 1) the latest confirmed block's epoch is older than the previous epoch,
-    # 2) the latest confirmed block does not belong to the canonical chain,
-    # 3) the confirmed chain starting from the current epoch observed justified checkpoint
-    #    cannot be re-confirmed at the start of the current epoch.
+    # 2) the latest confirmed block does not belong to the canonical chain.
+    #
+    # PROPOSAL (monotonicity guard): the epoch-boundary chain-safety re-check
+    # (`is_confirmed_chain_safe`) no longer reverts the confirmed block on its own. That check
+    # re-derives `is_one_confirmed` from the current vote view, which may be transiently stale (e.g.
+    # the most recent slot's attestations not yet observed at the start of the epoch), so it can
+    # spuriously fail for a block that was validly confirmed and is still on the canonical chain. A
+    # block that is still a canonical ancestor of `head` and within range has not been reverted, so
+    # `confirmed_root` is kept; only an actual reorg or staleness reverts it, making `confirmed_root`
+    # a monotonic high-water mark until reorg.
+    # OPEN QUESTION: should a genuine support drop on a still-canonical block — or the rarer
+    # "observed justified checkpoint not in the confirmed chain" failure mode of
+    # `is_confirmed_chain_safe` — still revert confirmation here?
     head = get_head(store).root
     if (
         get_block_epoch(store, confirmed_root) + 1 < current_epoch
         or not is_ancestor(store, get_node_for_root(head), get_node_for_root(confirmed_root))
-        or (
-            is_start_slot_at_epoch(get_current_slot(store))
-            and not is_confirmed_chain_safe(fcr_store, confirmed_root)
-        )
     ):
         confirmed_root = store.finalized_checkpoint.root
 
