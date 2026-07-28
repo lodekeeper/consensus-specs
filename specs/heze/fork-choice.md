@@ -14,6 +14,7 @@
 - [Helpers](#helpers)
   - [Modified `PayloadAttributes`](#modified-payloadattributes)
   - [Modified `Store`](#modified-store)
+  - [New `get_checkpoint_slot`](#new-get_checkpoint_slot)
   - [Modified `get_forkchoice_store`](#modified-get_forkchoice_store)
   - [New `record_payload_inclusion_list_satisfaction`](#new-record_payload_inclusion_list_satisfaction)
   - [New `is_payload_inclusion_list_satisfied`](#new-is_payload_inclusion_list_satisfied)
@@ -22,6 +23,7 @@
   - [Modified `get_checkpoint_block`](#modified-get_checkpoint_block)
 - [Handlers](#handlers)
   - [New `on_inclusion_list`](#new-on_inclusion_list)
+  - [Modified `on_block`](#modified-on_block)
   - [Modified `on_execution_payload_envelope`](#modified-on_execution_payload_envelope)
 
 <!-- mdformat-toc end -->
@@ -135,13 +137,40 @@ class Store:
     payload_inclusion_list_satisfaction: Dict[Root, boolean] = field(default_factory=dict)
 ```
 
+### New `get_checkpoint_slot`
+
+*Note*: `get_checkpoint_slot` returns the slot anchoring the checkpoint for
+`epoch`. Unlike prior forks, which anchor checkpoints to the first slot of
+`epoch`, Heze anchors checkpoints to the last slot of the previous epoch. For
+the genesis epoch, which has no previous epoch, the checkpoint slot is the
+genesis slot.
+
+```python
+def get_checkpoint_slot(epoch: Epoch) -> Slot:
+    """
+    Return the slot anchoring the checkpoint for ``epoch``.
+    """
+    if epoch == GENESIS_EPOCH:
+        return compute_start_slot_at_epoch(GENESIS_EPOCH)
+    return Slot(compute_start_slot_at_epoch(epoch) - 1)
+```
+
 ### Modified `get_forkchoice_store`
+
+*Note*: `get_forkchoice_store` is modified so that the trusted anchor block is
+the Heze checkpoint block for `anchor_epoch` -- the most recent block at or
+before the last slot of the previous epoch. `anchor_state` is the trusted state
+for `anchor_epoch`, with slots processed through the start of the epoch. This
+means `anchor_block.state_root` may not match `hash_tree_root(anchor_state)`
+when the checkpoint slot has no block.
 
 ```python
 def get_forkchoice_store(anchor_state: BeaconState, anchor_block: BeaconBlock) -> Store:
-    assert anchor_block.state_root == hash_tree_root(anchor_state)
     anchor_root = hash_tree_root(anchor_block)
+    # [Modified in Heze:EIPXXXX]
     anchor_epoch = get_current_epoch(anchor_state)
+    assert anchor_state.slot == compute_start_slot_at_epoch(anchor_epoch)
+    assert anchor_block.slot <= get_checkpoint_slot(anchor_epoch)
     justified_checkpoint = Checkpoint(epoch=anchor_epoch, root=anchor_root)
     finalized_checkpoint = Checkpoint(epoch=anchor_epoch, root=anchor_root)
     proposer_boost_root = Root()
@@ -257,10 +286,7 @@ def get_checkpoint_block(store: Store, root: Root, epoch: Epoch) -> Root:
     Compute the checkpoint block for epoch ``epoch`` in the chain of block ``root``
     """
     # [Modified in Heze:EIPXXXX]
-    if epoch == GENESIS_EPOCH:
-        checkpoint_slot = compute_start_slot_at_epoch(GENESIS_EPOCH)
-    else:
-        checkpoint_slot = Slot(compute_start_slot_at_epoch(epoch) - 1)
+    checkpoint_slot = get_checkpoint_slot(epoch)
     node = ForkChoiceNode(root=root, payload_status=PAYLOAD_STATUS_PENDING)
     return get_ancestor(store, node, checkpoint_slot).root
 ```
@@ -287,6 +313,84 @@ def on_inclusion_list(store: Store, signed_inclusion_list: SignedInclusionList) 
     is_timely = time_into_slot_ms < inclusion_list_due_ms
 
     process_inclusion_list(get_inclusion_list_store(), inclusion_list, is_timely)
+```
+
+### Modified `on_block`
+
+*Note*: `on_block` is modified so that the finalized-slot optimization uses the
+Heze checkpoint slot. This allows the first block of a finalized epoch to build
+on the finalized checkpoint block, which is the last block before the epoch. It
+is also modified to support a trusted anchor state that has already been dialed
+to the start of the checkpoint epoch.
+
+```python
+def on_block(store: Store, signed_block: SignedBeaconBlock) -> None:
+    """
+    Run ``on_block`` upon receiving a new block.
+    """
+    block = signed_block.message
+    # Parent block must be known
+    assert block.parent_root in store.block_states
+
+    # If this block builds on the parent's full payload, that payload must
+    # have been verified by on_execution_payload_envelope
+    if is_parent_node_full(store, block):
+        assert is_payload_verified(store, block.parent_root)
+
+    # Blocks cannot be in the future. If they are, their consideration must be delayed until they are in the past.
+    current_slot = get_current_slot(store)
+    assert current_slot >= block.slot
+
+    # Check that block is later than the finalized checkpoint slot (optimization to reduce calls to get_ancestor)
+    # [Modified in Heze:EIPXXXX]
+    finalized_slot = get_checkpoint_slot(store.finalized_checkpoint.epoch)
+    assert block.slot > finalized_slot
+    # Check block is a descendant of the finalized block at the checkpoint finalized slot
+    finalized_checkpoint_block = get_checkpoint_block(
+        store,
+        block.parent_root,
+        store.finalized_checkpoint.epoch,
+    )
+    assert store.finalized_checkpoint.root == finalized_checkpoint_block
+
+    # Make a copy of the state to avoid mutability issues
+    state = copy(store.block_states[block.parent_root])
+
+    # Check the block is valid and compute the post-state.
+    #
+    # [Modified in Heze:EIPXXXX]
+    # The trusted anchor state may already be processed through the start of the
+    # checkpoint epoch. If the next block is in that same slot, skip the
+    # state_transition() slot-processing wrapper and process the block directly.
+    block_root = hash_tree_root(block)
+    if state.slot == block.slot:
+        assert verify_block_signature(state, signed_block)
+        process_block(state, block)
+        assert block.state_root == hash_tree_root(state)
+    else:
+        state_transition(state, signed_block, validate_result=True)
+
+    # Compute head before applying the block
+    head = get_head(store)
+    # Add new block to the store
+    store.blocks[block_root] = block
+    # Add new state for this block to the store
+    store.block_states[block_root] = state
+    # Add a new PTC voting for this block to the store
+    store.payload_timeliness_vote[block_root] = [None] * PTC_SIZE
+    store.payload_data_availability_vote[block_root] = [None] * PTC_SIZE
+
+    # Notify the store about the payload_attestations in the block
+    notify_ptc_messages(store, state, block.body.payload_attestations)
+
+    record_block_timeliness(store, block_root)
+    update_proposer_boost_root(store, head.root, block_root)
+
+    # Update checkpoints in store if necessary
+    update_checkpoints(store, state.current_justified_checkpoint, state.finalized_checkpoint)
+
+    # Eagerly compute unrealized justification and finality.
+    compute_pulled_up_tip(store, block_root)
 ```
 
 ### Modified `on_execution_payload_envelope`
