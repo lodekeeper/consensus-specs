@@ -161,8 +161,7 @@ def get_checkpoint_slot(epoch: Epoch) -> Slot:
 the Heze checkpoint block for `anchor_epoch` -- the most recent block at or
 before the last slot of the previous epoch. `anchor_state` is the trusted state
 for `anchor_epoch`, with slots processed through the start of the epoch. This
-means `anchor_block.state_root` may not match `hash_tree_root(anchor_state)`
-when the checkpoint slot has no block.
+means `anchor_block.state_root` does not match `hash_tree_root(anchor_state)`.
 
 ```python
 def get_forkchoice_store(anchor_state: BeaconState, anchor_block: BeaconBlock) -> Store:
@@ -171,6 +170,10 @@ def get_forkchoice_store(anchor_state: BeaconState, anchor_block: BeaconBlock) -
     anchor_epoch = get_current_epoch(anchor_state)
     assert anchor_state.slot == compute_start_slot_at_epoch(anchor_epoch)
     assert anchor_block.slot <= get_checkpoint_slot(anchor_epoch)
+    if anchor_epoch == GENESIS_EPOCH:
+        assert anchor_block.state_root == hash_tree_root(anchor_state)
+    else:
+        assert hash_tree_root(anchor_state.latest_block_header) == anchor_root
     justified_checkpoint = Checkpoint(epoch=anchor_epoch, root=anchor_root)
     finalized_checkpoint = Checkpoint(epoch=anchor_epoch, root=anchor_root)
     proposer_boost_root = Root()
