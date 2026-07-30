@@ -7,6 +7,7 @@ from eth_consensus_specs.test.helpers.forks import (
     is_post_deneb,
     is_post_electra,
     is_post_gloas,
+    is_post_heze,
 )
 from eth_consensus_specs.test.helpers.keys import privkeys
 from eth_consensus_specs.test.helpers.state import (
@@ -69,7 +70,21 @@ def build_attestation_data(spec, state, slot, index, beacon_block_root=None, sha
         beacon_block_root = spec.get_block_root_at_slot(state, slot)
 
     current_epoch_start_slot = spec.compute_start_slot_at_epoch(spec.get_current_epoch(state))
-    if slot < current_epoch_start_slot:
+    if is_post_heze(spec):
+        # [Modified in Heze:EIPXXXX] the target anchors to the epoch boundary
+        # block (the last block of the previous epoch), mirroring
+        # get_checkpoint_root. When that slot is not yet in block_roots (genesis
+        # epoch at the genesis slot), the current block is the boundary.
+        target_epoch = spec.compute_epoch_at_slot(slot)
+        if target_epoch == spec.GENESIS_EPOCH:
+            boundary_slot = spec.GENESIS_SLOT
+        else:
+            boundary_slot = spec.compute_start_slot_at_epoch(target_epoch) - 1
+        if boundary_slot < state.slot:
+            epoch_boundary_root = spec.get_block_root_at_slot(state, spec.Slot(boundary_slot))
+        else:
+            epoch_boundary_root = beacon_block_root
+    elif slot < current_epoch_start_slot:
         epoch_boundary_root = spec.get_block_root(state, spec.get_previous_epoch(state))
     elif slot == current_epoch_start_slot:
         epoch_boundary_root = beacon_block_root

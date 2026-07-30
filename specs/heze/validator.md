@@ -18,6 +18,9 @@
   - [Block and sidecar proposal](#block-and-sidecar-proposal)
     - [Constructing the `BeaconBlockBody`](#constructing-the-beaconblockbody)
       - [ExecutionPayload](#executionpayload)
+  - [Attesting](#attesting)
+    - [Attestation data](#attestation-data)
+      - [Modified FFG vote](#modified-ffg-vote)
   - [Inclusion list proposal](#inclusion-list-proposal)
     - [Constructing the `SignedInclusionList`](#constructing-the-signedinclusionlist)
 
@@ -167,6 +170,30 @@ def prepare_execution_payload(
         payload_attributes=payload_attributes,
     )
 ```
+
+### Attesting
+
+#### Attestation data
+
+##### Modified FFG vote
+
+*Note*: The FFG `target` is modified to anchor to the epoch boundary block --
+the last block of the previous epoch -- via
+[`get_checkpoint_root`](./beacon-chain.md#new-get_checkpoint_root), rather than
+the first block of the current epoch. Because the boundary block is known a full
+epoch in advance, the slot-0 target race present in prior forks -- where the
+attester must identify the first block of the new epoch within
+`get_attestation_due_ms()` of the epoch's first slot -- is eliminated. The
+`source` vote is unchanged.
+
+- Set `attestation_data.source = head_state.current_justified_checkpoint`.
+- Set
+  `attestation_data.target = Checkpoint(epoch=get_current_epoch(head_state), root=epoch_boundary_block_root)`
+  where `epoch_boundary_block_root` is the root of the last block of the
+  previous epoch.
+
+*Note*: `epoch_boundary_block_root` can be looked up in the state using
+`get_checkpoint_root(head_state, get_current_epoch(head_state))`.
 
 ### Inclusion list proposal
 

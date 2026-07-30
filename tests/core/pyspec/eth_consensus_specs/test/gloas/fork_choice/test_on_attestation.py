@@ -13,6 +13,7 @@ from eth_consensus_specs.test.helpers.fork_choice import (
     setup_one_block_store,
     tick_store_to_slot,
 )
+from eth_consensus_specs.test.helpers.forks import is_post_heze
 from eth_consensus_specs.test.helpers.state import transition_to
 
 
@@ -135,7 +136,13 @@ def test_validate_on_attestation_beacon_root_payload_check(spec, state):
     att_state = beacon_state.copy()
     transition_to(spec, att_state, att_slot)
     att = get_valid_attestation(spec, att_state, slot=att_slot, payload_index=1, signed=True)
-    assert att.data.target.root == target_root
+    expected_target_root = target_root
+    if is_post_heze(spec):
+        # [Modified in Heze:EIPXXXX] the target anchors to the epoch boundary
+        # block (the last block of the previous epoch), not the first block of
+        # the target epoch
+        expected_target_root = spec.get_checkpoint_root(att_state, spec.Epoch(1))
+    assert att.data.target.root == expected_target_root
     assert att.data.beacon_block_root == beacon_root
 
     tick_store_to_slot(spec, store, att_slot + 1, test_steps)

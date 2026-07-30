@@ -4,7 +4,7 @@ from eth_consensus_specs.test.context import spec_state_test, with_all_phases
 from eth_consensus_specs.test.helpers.epoch_processing import (
     run_epoch_processing_with,
 )
-from eth_consensus_specs.test.helpers.forks import is_post_altair
+from eth_consensus_specs.test.helpers.forks import is_post_altair, is_post_heze
 from eth_consensus_specs.test.helpers.state import next_epoch_via_block, next_slot, transition_to
 from eth_consensus_specs.test.helpers.voluntary_exits import get_unslashed_exited_validators
 
@@ -112,9 +112,16 @@ def get_checkpoints(spec, epoch):
 
 def put_checkpoints_in_block_roots(spec, state, checkpoints):
     for c in checkpoints:
-        state.block_roots[
-            spec.compute_start_slot_at_epoch(c.epoch) % spec.SLOTS_PER_HISTORICAL_ROOT
-        ] = c.root
+        if is_post_heze(spec):
+            # [Modified in Heze:EIPXXXX] the checkpoint anchors to the epoch
+            # boundary block (the last block of the previous epoch)
+            if c.epoch == spec.GENESIS_EPOCH:
+                boundary_slot = spec.GENESIS_SLOT
+            else:
+                boundary_slot = spec.compute_start_slot_at_epoch(c.epoch) - 1
+        else:
+            boundary_slot = spec.compute_start_slot_at_epoch(c.epoch)
+        state.block_roots[boundary_slot % spec.SLOTS_PER_HISTORICAL_ROOT] = c.root
 
 
 def finalize_on_234(spec, state, epoch, sufficient_support):
