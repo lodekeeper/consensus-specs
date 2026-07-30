@@ -135,9 +135,7 @@ def get_checkpoint_root(state: BeaconState, epoch: Epoch) -> Root:
     Return the block root anchoring the checkpoint for ``epoch`` -- the last
     block of the previous epoch (the epoch boundary).
     """
-    if epoch == GENESIS_EPOCH:
-        return get_block_root_at_slot(state, GENESIS_SLOT)
-    return get_block_root_at_slot(state, Slot(compute_start_slot_at_epoch(epoch) - 1))
+    return get_block_root_at_slot(state, get_checkpoint_slot(epoch))
 ```
 
 #### Modified `get_attestation_participation_flag_indices`
